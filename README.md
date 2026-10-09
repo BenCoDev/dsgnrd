@@ -14,13 +14,13 @@ npm ci
 npm run migrate
 
 npx tsx src/dsgnrd.ts experiment create oldskaters-reveal \
-  -p problems/design/oldskaters-trick-reveal
+  -p problems/oldskaters/trick-reveal
 npx tsx src/dsgnrd.ts experiment list
 ```
 
-The included [Oldskaters problem](problems/design/oldskaters-trick-reveal/problem.md) explores trick-video aspect ratios while preserving the fun of the reveal. Use another experiment name to repeat the exercise.
+The included [Oldskaters problem](problems/oldskaters/trick-reveal/problem.md) explores trick-video aspect ratios while preserving the fun of the reveal. Use another experiment name to repeat the exercise.
 
-You should see `oldskaters-reveal` with `design/oldskaters-trick-reveal` as its stored problem reference. The command passes the folder containing `problem.md`, following srchd's folder convention. Creation checks that the path exists and saves it; it does not read or copy the problem text. No agents run and no model credentials are needed.
+You should see `oldskaters-reveal` with `oldskaters/trick-reveal` as its stored problem reference. The command passes the folder containing `problem.md`, following srchd's folder convention. Creation checks that the path exists and saves it; it does not read or copy the problem text. No agents run and no model credentials are needed.
 
 Use `-p /absolute/path/to/your/problem.md` for your own file. Like srchd, folder inputs are also accepted; `problem.md` and optional `data/` are used later when agents run. A nonexistent path fails without creating a record. Names must be unique. Listing an empty database returns a not-found error, as in srchd.
 
