@@ -1,0 +1,68 @@
+erDiagram
+    direction TB
+    experiments["experiments: Design brief"]
+    agents["agents: Design agents"]
+    publications["publications: Design proposals"]
+    reviews["reviews: Design critiques"]
+    citations["citations: Proposal links"]
+    solutions["solutions: Current directions"]
+    experiments ||--o{ agents : contains
+    agents ||--o{ publications : authors
+    agents ||--o{ reviews : writes
+    publications ||--o{ reviews : receives
+    publications ||--o{ citations : "citing publication"
+    publications ||--o{ citations : "cited publication"
+    agents ||--o{ solutions : records
+    publications |o--o{ solutions : "optionally referenced by"
+
+    experiments {
+        integer id PK
+        text name UK
+        text problem
+    }
+
+    agents {
+        integer id PK
+        integer experiment FK
+        text name
+        text provider
+        text model
+        text thinking
+        text profile
+    }
+
+    publications {
+        integer id PK
+        integer experiment FK
+        integer author FK
+        text title
+        text abstract
+        text content
+        text status
+        text reference
+    }
+
+    reviews {
+        integer id PK
+        integer experiment FK
+        integer publication FK
+        integer author FK
+        text grade "nullable"
+        text content "nullable"
+    }
+
+    citations {
+        integer id PK
+        integer experiment FK
+        integer from FK
+        integer to FK
+    }
+
+    solutions {
+        integer id PK
+        integer experiment FK
+        integer publication FK "nullable"
+        integer agent FK
+        text reason
+        text content "rationale"
+    }

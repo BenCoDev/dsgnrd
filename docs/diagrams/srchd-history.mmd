@@ -1,0 +1,44 @@
+erDiagram
+    direction TB
+    agents ||--o{ evolutions : "versions its prompt"
+    agents ||--o{ messages : "has conversation history"
+    agents ||--o{ token_usages : "incurs usage"
+    messages ||--o{ token_usages : "has usage records"
+
+    agents {
+        integer id PK
+        integer experiment FK
+        text name
+        text provider
+        text model
+        text thinking
+        text profile
+    }
+
+    evolutions {
+        integer id PK
+        integer experiment FK
+        integer agent FK
+        text system
+    }
+
+    messages {
+        integer id PK
+        integer experiment FK
+        integer agent FK
+        integer position
+        text role
+        json content
+    }
+
+    token_usages {
+        integer id PK
+        integer experiment FK
+        integer agent FK
+        integer message FK
+        integer total
+        integer input
+        integer output
+        integer cached
+        integer thinking
+    }
