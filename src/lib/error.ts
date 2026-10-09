@@ -42,7 +42,7 @@ export class Err<E> {
   }
 }
 
-export type Result<T> = Ok<T> | Err<SrchdError>;
+export type Result<T> = Ok<T> | Err<DsgnrdError>;
 
 export type ErrorCode =
   | "invalid_parameters_error"
@@ -72,7 +72,7 @@ export type ErrorCode =
   | "port_forward_error"
   | "string_edit_error";
 
-export class SrchdError extends Error {
+export class DsgnrdError extends Error {
   constructor(
     readonly code: ErrorCode,
     message: string,
@@ -90,7 +90,7 @@ export function err(
   code: ErrorCode,
   message: string,
   cause?: any,
-): Err<SrchdError> {
+): Err<DsgnrdError> {
   // Normalize the cause: if it's an Err, extract the error; otherwise use normalizeError
   let normalizedCause: Error | undefined;
 
@@ -104,7 +104,7 @@ export function err(
     }
   }
 
-  return new Err(new SrchdError(code, message, normalizedCause));
+  return new Err(new DsgnrdError(code, message, normalizedCause));
 }
 
 export function errorToString(error: unknown): string {
@@ -142,7 +142,7 @@ export function withRetries<T, U>(
   assert(retries >= 1);
 
   return async (arg) => {
-    const errors: SrchdError[] = [];
+    const errors: DsgnrdError[] = [];
 
     for (let i = 0; i < retries; i++) {
       const res = await fn(arg);

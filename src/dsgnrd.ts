@@ -2,10 +2,10 @@
 
 import { Command } from "commander";
 import { problemPathFromInput } from "./lib/problem";
-import { Err, err, SrchdError } from "./lib/error";
+import { Err, err, DsgnrdError } from "./lib/error";
 import { ExperimentResource } from "./resources/experiment";
 
-const exitWithError = (err: Err<SrchdError>) => {
+const exitWithError = (err: Err<DsgnrdError>) => {
   console.error(
     `\x1b[31mError [${err.error.code}] ${err.error.message}\x1b[0m`,
   );

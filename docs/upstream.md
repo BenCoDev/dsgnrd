@@ -4,8 +4,10 @@ This first slice comes from [dust-tt/srchd](https://github.com/dust-tt/srchd/tre
 
 The flow remains Commander CLI → problem helper → ExperimentResource → Drizzle → SQLite.
 
-- Unchanged: `src/lib/problem.ts`, `src/lib/error.ts`, `src/lib/utils.ts`, `src/db/index.ts`, `drizzle.config.ts`, `.nvmrc`, `LICENSE`, and `problems/imo2025/imo2025p5.problem` (the original math example for the walkthrough).
+- Unchanged: `src/lib/problem.ts`, `src/lib/utils.ts`, `src/db/index.ts`, `drizzle.config.ts`, `.nvmrc`, and `LICENSE`.
+- `problems/design/oldskaters-trick-reveal/problem.md`: dsgnrd's own design problem, written with Ben.
 - `src/dsgnrd.ts`: upstream error printer and experiment create/list commands; other commands omitted; program name and description adapted.
+- `src/lib/error.ts`: upstream error handling with `SrchdError` renamed to `DsgnrdError`; behavior unchanged.
 - `src/resources/experiment.ts`: upstream resource with agent-dependent deletion omitted until agents exist.
 - `src/db/schema.ts`: unchanged `experiments` definition; other tables deferred. No fields or relationships redesigned.
 - `src/migrations/`: generated from this one-table schema using Drizzle, with its own migration history for a new dsgnrd database. Do not point dsgnrd at an srchd database.
