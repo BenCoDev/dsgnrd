@@ -4,7 +4,8 @@ This first slice comes from [dust-tt/srchd](https://github.com/dust-tt/srchd/tre
 
 The flow remains Commander CLI → problem helper → ExperimentResource → Drizzle → SQLite.
 
-- Unchanged: `src/lib/problem.ts`, `src/lib/utils.ts`, `src/db/index.ts`, `drizzle.config.ts`, `.nvmrc`, and `LICENSE`.
+- Unchanged: `src/lib/problem.ts`, `src/lib/utils.ts`, `src/db/index.ts`, `drizzle.config.ts`, and `.nvmrc`.
+- `LICENSE`: MIT terms and upstream copyright notice retained for srchd portions; BenCoDev copyright added for dsgnrd contributions.
 - `problems/design/oldskaters-trick-reveal/problem.md`: dsgnrd's own design problem, written with Ben.
 - `src/dsgnrd.ts`: upstream error printer and experiment create/list commands; other commands omitted; program name and description adapted.
 - `src/lib/error.ts`: upstream error handling with `SrchdError` renamed to `DsgnrdError`; behavior unchanged.
