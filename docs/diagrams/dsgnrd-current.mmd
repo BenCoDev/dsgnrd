@@ -6,3 +6,25 @@ erDiagram
         text name UK
         text problem "file or folder reference"
     }
+    agents {
+        integer id PK
+        integer created "timestamp"
+        integer updated "timestamp"
+        integer experiment FK "unique with name"
+        text name "unique with experiment"
+        text provider
+        text model
+        text thinking
+        text profile "profile directory name"
+    }
+    evolutions {
+        integer id PK
+        integer created "timestamp"
+        integer updated "timestamp"
+        integer experiment FK
+        integer agent FK
+        text system "saved instructions"
+    }
+    experiments ||--o{ agents : has
+    experiments ||--o{ evolutions : contains
+    agents ||--o{ evolutions : has

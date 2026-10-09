@@ -1,0 +1,174 @@
+import { db } from "@app/db";
+import { agents, evolutions } from "@app/db/schema";
+import { eq, InferSelectModel, InferInsertModel, and, desc } from "drizzle-orm";
+import { ExperimentResource } from "./experiment";
+import { Result, err, ok } from "@app/lib/error";
+import { concurrentExecutor } from "@app/lib/async";
+import {
+  AgentProfile,
+  getAgentProfile,
+  PLACEHOLDER_AGENT_PROFILE,
+} from "@app/agent_profile";
+import assert from "assert";
+
+export type Evolution = InferSelectModel<typeof evolutions>;
+export type Agent = Omit<InferSelectModel<typeof agents>, "profile"> & {
+  profile: AgentProfile;
+  system: string;
+};
+
+export class AgentResource {
+  private data: InferSelectModel<typeof agents>;
+  private lastEvolution: Evolution | null;
+  private profile: AgentProfile;
+  experiment: ExperimentResource;
+
+  private constructor(
+    data: InferSelectModel<typeof agents>,
+    experiment: ExperimentResource,
+  ) {
+    this.data = data;
+    this.lastEvolution = null;
+    this.experiment = experiment;
+    this.profile = PLACEHOLDER_AGENT_PROFILE;
+  }
+
+  async loadAllEvolutions(): Promise<Evolution[]> {
+    return await db
+      .select()
+      .from(evolutions)
+      .where(eq(evolutions.agent, this.data.id))
+      .orderBy(desc(evolutions.created));
+  }
+
+  private async finalize(): Promise<AgentResource> {
+    const [latest] = await db
+      .select()
+      .from(evolutions)
+      .where(eq(evolutions.agent, this.data.id))
+      .orderBy(desc(evolutions.created))
+      .limit(1);
+
+    assert(latest);
+    this.lastEvolution = latest;
+
+    const profileRes = await getAgentProfile(this.data.profile);
+    assert(profileRes.isOk());
+    this.profile = profileRes.value;
+
+    return this;
+  }
+
+  static async findByName(
+    experiment: ExperimentResource,
+    name: string,
+  ): Promise<Result<AgentResource>> {
+    const [result] = await db
+      .select()
+      .from(agents)
+      .where(
+        and(
+          eq(agents.name, name),
+          eq(agents.experiment, experiment.toJSON().id),
+        ),
+      )
+      .limit(1);
+
+    if (!result) {
+      return err(
+        "not_found_error",
+        `Agent '${name}' not found in experiment ${experiment.toJSON().name}`,
+      );
+    }
+
+    return ok(await new AgentResource(result, experiment).finalize());
+  }
+
+  static async findById(
+    experiment: ExperimentResource,
+    id: number,
+  ): Promise<Result<AgentResource>> {
+    const [result] = await db
+      .select()
+      .from(agents)
+      .where(
+        and(
+          eq(agents.id, id),
+          eq(agents.experiment, experiment.toJSON().id),
+        ),
+      )
+      .limit(1);
+
+    if (!result) return err("not_found_error", `Agent not found for id: ${id}`);
+
+    return ok(await new AgentResource(result, experiment).finalize());
+  }
+
+  static async listByExperiment(
+    experiment: ExperimentResource,
+  ): Promise<AgentResource[]> {
+    const results = await db
+      .select()
+      .from(agents)
+      .where(eq(agents.experiment, experiment.toJSON().id));
+
+    // TODO(spolu): optimize with a join?
+    return await concurrentExecutor(
+      results,
+      async (data) => {
+        return await new AgentResource(data, experiment).finalize();
+      },
+      { concurrency: 8 },
+    );
+  }
+
+  static async create(
+    experiment: ExperimentResource,
+    data: Omit<
+      InferInsertModel<typeof agents>,
+      "id" | "created" | "updated" | "experiment"
+    >,
+    evolution: Omit<
+      InferInsertModel<typeof evolutions>,
+      "id" | "created" | "updated" | "experiment" | "agent"
+    >,
+  ): Promise<AgentResource> {
+    const [created] = await db
+      .insert(agents)
+      .values({
+        ...data,
+        experiment: experiment.toJSON().id,
+      })
+      .returning();
+
+    await db.insert(evolutions).values({
+      ...evolution,
+      experiment: created.experiment,
+      agent: created.id,
+    });
+
+    return await new AgentResource(created, experiment).finalize();
+  }
+
+  async update(
+    data: Partial<Omit<InferInsertModel<typeof agents>, "id" | "created">>,
+  ): Promise<AgentResource> {
+    const [updated] = await db
+      .update(agents)
+      .set({ ...data, updated: new Date() })
+      .where(eq(agents.id, this.data.id))
+      .returning();
+
+    this.data = updated;
+    return this;
+  }
+
+  toJSON(): Agent {
+    assert(this.lastEvolution);
+    return {
+      ...this.data,
+      system: this.lastEvolution.system,
+      profile: this.profile,
+    };
+  }
+}

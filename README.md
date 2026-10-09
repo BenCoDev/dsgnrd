@@ -26,11 +26,20 @@ Use `-p /absolute/path/to/your/problem.md` for your own file. Like srchd, folder
 
 Commands use `./db.sqlite` by default. To use another **dsgnrd** database, set `DATABASE_PATH` to the same path for migration and every command. Keep it separate from srchd's database and run commands from this repository root.
 
+# Create an agent
+
+```bash
+npx tsx src/dsgnrd.ts agent create -e oldskaters-reveal -n designer -p design
+npx tsx src/dsgnrd.ts agent list -e oldskaters-reveal
+```
+
+The [design profile](agents/design/prompt.md) supplies the instructions; the agent stores its experiment, name, profile, model, and thinking setting. Its first `evolutions` record saves those instructions. Defaults match srchd: `-m claude-sonnet-5 -t low -c 1`. Here `-p` means profile. Creation makes no model calls and needs no credentials.
+
 # Learning from srchd
 
 To optimise for learning, I chose to preserve srchd's architecture as much as possible. The same relationships connect agents, their contributions, their reviews, and the solutions they currently favor.
 
-**Status:** the full charts below describe the target model. Only `experiments` is implemented so far; agents, publications, and the other tables remain planned. The proposed design meanings preserve srchd's table names and relationships. `experiments.problem` stores a file or folder reference, not the brief text.
+**Status:** the full charts below describe the target model. `experiments`, `agents`, and `evolutions` are implemented; the other tables remain planned. See the [implemented schema](docs/diagrams/dsgnrd-current.svg) ([Mermaid](docs/diagrams/dsgnrd-current.mmd)). The proposed design meanings preserve srchd's table names and relationships. `experiments.problem` stores a file or folder reference, not the brief text.
 
 The full model is shown in the same two views as the Notion diagrams: collaboration, then agent history and usage. Both columns preserve the same fields and relationships.
 
