@@ -1,0 +1,596 @@
+import {
+  clampContextSize,
+  LLM,
+  Message,
+  TextContent,
+  Thinking,
+  Tool,
+  ToolResult,
+  ToolUse,
+} from "@app/models";
+import { AgentResource } from "@app/resources/agent";
+import { ExperimentResource } from "@app/resources/experiment";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { withRetries, Result, err, ok } from "@app/lib/error";
+import { MessageResource } from "@app/resources/messages";
+import assert from "assert";
+import { PublicationResource } from "@app/resources/publication";
+import { renderListOfPublications } from "@app/tools/publications";
+import { createClientServerPair, errorToCallToolResult } from "@app/lib/mcp";
+import { concurrentExecutor } from "@app/lib/async";
+import { assertNever } from "@app/lib/assert";
+import { TokenUsageResource } from "@app/resources/token_usage";
+import { createServer } from "@app/tools";
+import { DEFAULT_TOOLS } from "@app/tools/constants";
+import { RunConfig } from "./config";
+import { createLLM } from "@app/models/provider";
+import { Advisory } from "./advisory";
+
+export class Runner {
+  private experiment: ExperimentResource;
+  private agent: AgentResource;
+  private mcpClients: Client[];
+  private model: LLM;
+
+  private contextPruning: {
+    lastAgentLoopStartIdx: number;
+    lastAgentLoopInnerStartIdx: number;
+  };
+  private messages: MessageResource[]; // ordered by position asc
+
+  private constructor(
+    experiment: ExperimentResource,
+    agent: AgentResource,
+    mcpClients: Client[],
+    model: LLM,
+  ) {
+    this.experiment = experiment;
+    this.agent = agent;
+    this.mcpClients = mcpClients;
+    this.model = model;
+
+    this.messages = [];
+    this.contextPruning = {
+      lastAgentLoopStartIdx: 0,
+      lastAgentLoopInnerStartIdx: 0,
+    };
+  }
+
+  public static async builder(
+    experiment: ExperimentResource,
+    agent: AgentResource,
+    config: RunConfig,
+  ): Promise<Result<Runner>> {
+    if (agent.toJSON().profile.tools.length > 0) {
+      return err("invalid_parameters_error", "Optional tools are not implemented. Use the design profile with tools: [].");
+    }
+    let model: LLM;
+    try {
+      model = createLLM(agent.toJSON().model, { thinking: agent.toJSON().thinking });
+    } catch (error) {
+      return err("model_error", "Failed to initialize model", error);
+    }
+    const servers = await Promise.all(
+      [...agent.toJSON().profile.tools, ...DEFAULT_TOOLS].map((t) =>
+        createServer(t, { experiment, agent, config }),
+      ),
+    );
+    const clients = await Promise.all(
+      servers.map(async (s) => {
+        const [client] = await createClientServerPair(s);
+        return client;
+      }),
+    );
+
+    const runner = await Runner.initialize(experiment, agent, clients, model);
+    if (runner.isErr()) {
+      return runner;
+    }
+
+    return ok(runner.value);
+  }
+
+  public static async initialize(
+    experiment: ExperimentResource,
+    agent: AgentResource,
+    mcpClients: Client[],
+    model: LLM,
+  ): Promise<Result<Runner>> {
+    const runner = new Runner(experiment, agent, mcpClients, model);
+
+    const messages = await MessageResource.listMessagesByAgent(
+      runner.experiment,
+      runner.agent,
+    );
+
+    runner.messages = messages;
+
+    return ok(runner);
+  }
+
+  async tools(): Promise<Result<Tool[]>> {
+    const tools: Tool[] = [];
+
+    for (const client of this.mcpClients) {
+      try {
+        const ct = await client.listTools();
+        for (const tool of ct.tools) {
+          tools.push({
+            name: `${client.getServerVersion()?.name}-${tool.name}`,
+            description: tool.description,
+            inputSchema: tool.inputSchema,
+          });
+        }
+      } catch (error) {
+        return err(
+          "tool_error",
+          `Error listing tools from client ${client.getServerVersion()?.name}`,
+          error,
+        );
+      }
+    }
+
+    // console.log("--------------------------------");
+    // console.log("Available Tools:");
+    // tools.forEach((tool) => {
+    //   console.log(`- ${tool.name}: ${tool.description}`);
+    // });
+
+    return ok(tools);
+  }
+
+  async executeTool(t: ToolUse): Promise<ToolResult> {
+    for (const client of this.mcpClients) {
+      try {
+        const ct = await client.listTools();
+        for (const tool of ct.tools) {
+          if (`${client.getServerVersion()?.name}-${tool.name}` === t.name) {
+            const result = await client.callTool({
+              name: tool.name,
+              arguments: t.input,
+            });
+
+            // console.log(result);
+            // console.log(JSON.stringify(result, null, 2));
+
+            return {
+              type: "tool_result",
+              toolUseId: t.id,
+              toolUseName: t.name,
+              // @ts-ignore TODO(spolu): investigate mismatch
+              content: result.content,
+              // @ts-ignore TODO(spolu): investigate mismatch
+              isError: result.isError ?? false,
+            };
+          }
+        }
+      } catch (error) {
+        return {
+          type: "tool_result",
+          toolUseId: t.id,
+          toolUseName: t.name,
+          content: errorToCallToolResult(
+            err(
+              "tool_execution_error",
+              `Error executing tool ${t.name}`,
+              error,
+            ),
+          ).content,
+          isError: true,
+        };
+      }
+    }
+
+    return {
+      type: "tool_result",
+      toolUseId: t.id,
+      toolUseName: t.name,
+      content: errorToCallToolResult(
+        err(
+          "tool_execution_error",
+          `No MCP client found to execute tool ${t.name}`,
+        ),
+      ).content,
+      isError: true,
+    };
+  }
+
+  isNewUserMessageNeeded(): boolean {
+    if (this.messages.length === 0) {
+      return true;
+    }
+
+    // If the role is agent it means we had no tool use in the last tick and we need a user message.
+    const last = this.messages[this.messages.length - 1];
+    if (last.toJSON().role === "agent") {
+      return true;
+    }
+
+    return false;
+  }
+
+  async newUserMessage(): Promise<Result<MessageResource>> {
+    const position =
+      this.messages.length > 0
+        ? this.messages[this.messages.length - 1].position() + 1
+        : 0;
+
+    const reviews =
+      await PublicationResource.listByExperimentAndReviewRequested(
+        this.experiment,
+        this.agent,
+      );
+
+    const publications = await PublicationResource.listByAuthor(
+      this.experiment,
+      this.agent,
+    );
+
+    const m: Message = {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: `\
+SUBMITTED_PUBLICATIONS:
+${renderListOfPublications(publications, { withAbstract: false })}
+
+PENDING_REVIEWS (to prioritize):
+${renderListOfPublications(reviews, { withAbstract: false })}
+
+<system>
+This is an automated system message and there is no user available to respond. Proceed autonomously, making sure to use tools as only tools have visible effects on the system. Never stay idle and always pro-actively work on furthering your design work (even if your publications are under review or accepted as current best solutions). Never consider your design exploration as complete.
+<system>
+`,
+          provider: null,
+        },
+      ],
+    };
+
+    const message = await MessageResource.create(
+      this.experiment,
+      this.agent,
+      m,
+      position,
+    );
+
+    return ok(message);
+  }
+
+  private isAgentLoopStartMessage(message: Message): boolean {
+    // A user message with only text content marks the start of an agentic loop.
+    return (
+      message.role === "user" && message.content.every((c) => c.type === "text")
+    );
+  }
+
+  private isAgentLoopInnerStartMessage(m: Message): boolean {
+    // We prune at tool_uses because it ensures the conversation is valid (since any following
+    // tool_result is guaranteed to have its corresponding tool_use before it).
+    return m.role === "agent" && m.content.some((c) => c.type === "tool_use");
+  }
+
+  shiftContextPruning(): Result<void> {
+    /**
+     * We bump lastAgentLoopInnerStartIdx whilst ensuring that the conversation is valid. This is
+     * done by pruning messages before a tool_use (since any following tool_result is guaranteed to
+     * have its corresponding tool_use before it).
+     */
+    assert(
+      this.contextPruning.lastAgentLoopInnerStartIdx < this.messages.length,
+      "lastLoopInnerStartIdx is out of bounds.",
+    );
+
+    let idx =
+      this.contextPruning.lastAgentLoopInnerStartIdx >
+      this.contextPruning.lastAgentLoopStartIdx
+        ? this.contextPruning.lastAgentLoopInnerStartIdx + 1
+        : /* This avoids an unneeded iteration, without this, if they were equal, the result of the
+           * iteration would have been: lastAgentLoopInnerStartIdx === lastAgentLoopStartIdx + 1.
+           * Which results in no change to `messages` since:
+           * forall idx, messages.slice(idx) === [messages[idx], ...messages.slice(idx+1)] */
+          this.contextPruning.lastAgentLoopInnerStartIdx + 2;
+    let foundNewAgenticLoop = false;
+
+    for (; idx < this.messages.length; idx++) {
+      const m = this.messages[idx].toJSON();
+      if (this.isAgentLoopInnerStartMessage(m)) {
+        break;
+      }
+      if (this.isAgentLoopStartMessage(m)) {
+        foundNewAgenticLoop = true;
+        break;
+      }
+    }
+
+    if (idx >= this.messages.length) {
+      return err(
+        "agent_loop_overflow_error",
+        "No agentic loop start position found after last.",
+      );
+    }
+
+    if (foundNewAgenticLoop) {
+      this.contextPruning.lastAgentLoopStartIdx = idx;
+    }
+    this.contextPruning.lastAgentLoopInnerStartIdx = idx;
+
+    return ok(undefined);
+  }
+
+  /**
+   * Render past agent messages to the model handling truncation to fit the model context window as
+   * needed.
+   *
+   * @param systemPrompt System prompt to use for the model call.
+   * @param tools Tools to provide to the model.
+   */
+  async renderForModel(
+    systemPrompt: string,
+    tools: Tool[],
+  ): Promise<Result<Message[]>> {
+    /**
+     * Invariants:
+     * (1) The agent loop is always started by a user message (with only text content).
+     * (2) Tool Result must be preceded by a corresponding (i.e. same tool_use_id) Tool Use.
+     *
+     * - If lastAgentLoopInnerStartIdx === lastAgentLoopStartIdx: we have a full agent loop. And we
+     * select all messages from lastAgentLoopStartIdx (messages[lastAgentLoopInnerStartIdx]
+     * verifies (1)). And since the agent loop is not pruned we also automatically verify (2).
+     *
+     * If lastAgentLoopInnerStartIdx > lastAgentLoopStartIdx: we prune messages *in* the agent loop.
+     * We select messages from lastAgentLoopInnerStartIdx (messages[lastAgentLoopInnerStartIdx]
+     * verifies (2)). BUT we also need to include the user text message at the start of the agent
+     * loop (at lastAgentLoopStartIdx) to ensure (1).
+     */
+    let tokenCount = 0;
+    for (;;) {
+      // Prune messages before contextPruning.lastAgentLoopInnerStartIdx.
+      let messages = [...this.messages]
+        .slice(this.contextPruning.lastAgentLoopInnerStartIdx)
+        .map((m) => m.toJSON());
+
+      // console.log(`Inner: ${this.contextPruning.lastAgentLoopInnerStartIdx}`);
+      // console.log(`Start: ${this.contextPruning.lastAgentLoopStartIdx}`);
+
+      if (
+        this.contextPruning.lastAgentLoopInnerStartIdx >
+        this.contextPruning.lastAgentLoopStartIdx
+      ) {
+        // A valid conversation must begin with a user message. In this case we use the
+        // user message at the start of the agent loop. Ensuring (1).
+        const agentLoopStartUserMessage =
+          this.messages[this.contextPruning.lastAgentLoopStartIdx].toJSON();
+        messages = [agentLoopStartUserMessage, ...messages];
+      }
+
+      // Check input items count before making an API call to count tokens.
+      const inputItemsCount = messages.reduce(
+        (acc, m) => acc + m.content.length,
+        0,
+      );
+      const maxInputItems = this.model.maxInputItems();
+      if (inputItemsCount > maxInputItems) {
+        const res = this.shiftContextPruning();
+        if (res.isErr()) {
+          return res;
+        }
+        continue;
+      }
+
+      const res = await this.model.tokens(
+        messages,
+        systemPrompt,
+        "auto",
+        tools,
+      );
+      if (res.isErr()) {
+        console.log(
+          "Agent: " + this.agent.toJSON().name + " " + this.agent.toJSON().id,
+        );
+        console.log(messages.length);
+        messages.forEach((m) => {
+          console.log(m.role);
+          console.log(m.content);
+          console.log("----");
+        });
+        return res;
+      }
+      tokenCount = res.value;
+      // console.log("TOKEN COUNT: " + tokenCount);
+
+      if (tokenCount > clampContextSize(this.model.maxTokens())) {
+        const res = this.shiftContextPruning();
+        if (res.isErr()) {
+          return res;
+        }
+      } else {
+        return ok(messages);
+      }
+    }
+  }
+
+  /**
+   * Logs message content during runner execution to display progress.
+   */
+  logContent(
+    c: TextContent | ToolUse | ToolResult | Thinking,
+    messageId?: number,
+  ) {
+    let out = `\x1b[1m\x1b[37m${this.agent.toJSON().name}\x1b[0m`; // name: bold white
+    if (messageId) {
+      out += ` \x1b[1m\x1b[33m#${messageId}\x1b[0m`; // message id: bold yellow if available
+    }
+    switch (c.type) {
+      case "thinking": {
+        out += ` \x1b[90m>\x1b[0m `; // separator: grey
+        out += `\x1b[1m\x1b[95mThinking:\x1b[0m `; // label: bold magenta/purple
+        out += `\x1b[90m${c.thinking.replace(/\n/g, " ")}\x1b[0m`; // text: grey
+        break;
+      }
+      case "text": {
+        out += ` \x1b[90m>\x1b[0m `; // separator: grey
+        out += `\x1b[1m\x1b[38;5;208mText:\x1b[0m `; // label: bold orange (256-color)
+        out += `\x1b[90m${c.text.replace(/\n/g, " ")}\x1b[0m`; // content: grey
+        break;
+      }
+      case "tool_use": {
+        out += ` \x1b[90m>\x1b[0m `; // separator: grey
+        out += `\x1b[1m\x1b[32mToolUse:\x1b[0m `; // label: bold green
+        out += `${c.name}`;
+        break;
+      }
+      case "tool_result": {
+        out += ` \x1b[90m<\x1b[0m `; // separator: grey
+        out += `\x1b[1m\x1b[34mToolResult:\x1b[0m `; // label: bold blue
+        out +=
+          `${c.toolUseName} ` +
+          `${
+            c.isError
+              ? "\x1b[1m\x1b[31m[error]\x1b[0m"
+              : "\x1b[1m\x1b[32m[success]\x1b[0m"
+          }`;
+        break;
+      }
+      default:
+        assertNever(c);
+    }
+    console.log(out);
+  }
+
+  /**
+   * Advance runer by one tick (one agent call + associated tools executions).
+   */
+  async tick(): Promise<Result<void>> {
+    const tools = await this.tools();
+    if (tools.isErr()) {
+      return tools;
+    }
+
+    if (this.isNewUserMessageNeeded()) {
+      const newMessage = await this.newUserMessage();
+      if (newMessage.isErr()) {
+        return newMessage;
+      }
+      this.messages.push(newMessage.value);
+    }
+
+    const problemMarkdown = await this.experiment.getProblemMarkdown();
+    if (problemMarkdown.isErr()) {
+      return problemMarkdown;
+    }
+
+    const systemPrompt = `\
+<goal>
+${problemMarkdown.value}
+</goal>
+
+${this.agent.toJSON().system}`;
+
+    const messagesForModel = await this.renderForModel(
+      systemPrompt,
+      tools.value,
+    );
+    if (messagesForModel.isErr()) {
+      return messagesForModel;
+    }
+
+    const res = await withRetries(async () => {
+      return this.model.run(
+        messagesForModel.value,
+        systemPrompt,
+        "auto",
+        tools.value,
+      );
+    })({});
+    if (res.isErr()) {
+      return res;
+    }
+
+    const { message, tokenUsage } = res.value;
+
+    if (message.content.length === 0) {
+      console.log(
+        `WARNING: Skipping empty agent response content for agent ${
+          this.agent.toJSON().name
+        }`,
+      );
+      return ok(undefined);
+    }
+
+    const toolResults = await concurrentExecutor(
+      message.content.filter((content) => content.type === "tool_use"),
+      async (t: ToolUse) => {
+        return await this.executeTool(t);
+      },
+      { concurrency: 8 },
+    );
+
+    const last = this.messages[this.messages.length - 1];
+
+    const agentMessage = await MessageResource.create(
+      this.experiment,
+      this.agent,
+      message,
+      last.position() + 1,
+    );
+    this.messages.push(agentMessage);
+
+    if (tokenUsage) {
+      await TokenUsageResource.logUsage(
+        this.experiment,
+        this.agent,
+        agentMessage,
+        tokenUsage,
+      );
+    } else {
+      console.warn(
+        `WARNING: Skipping token usage log for agent ${this.agent.toJSON().name}`,
+      );
+    }
+
+    message.content.forEach((c) => {
+      this.logContent(c, agentMessage.toJSON().id);
+    });
+
+    if (toolResults.length > 0) {
+      const content: (TextContent | ToolResult)[] = toolResults;
+      const advisoryMessages = Advisory.pop(this.agent.toJSON().name);
+      if (advisoryMessages.length > 0) {
+        content.push({
+          type: "text",
+          text: advisoryMessages.map((s) => Advisory.toString(s)).join("\n\n"),
+          provider: null,
+        });
+        // Log advisory messages
+        advisoryMessages.forEach((msg) => {
+          let out = `\x1b[1m\x1b[37m${this.agent.toJSON().name}\x1b[0m`; // name: bold white
+          out += ` \x1b[90m>\x1b[0m `; // separator: grey
+          out += `\x1b[1m\x1b[36mAdvisory:\x1b[0m `; // label: bold cyan
+          out += `\x1b[90m${Advisory.toString(msg).replace(/\n/g, " ")}\x1b[0m`; // content: grey
+          console.log(out);
+        });
+      }
+      const toolResultsMessage = await MessageResource.create(
+        this.experiment,
+        this.agent,
+        {
+          role: "user",
+          content,
+        },
+        last.position() + 2,
+      );
+      this.messages.push(toolResultsMessage);
+
+      toolResults.forEach((tr) => {
+        this.logContent(tr, toolResultsMessage.toJSON().id);
+        if (tr.isError) {
+          console.error(tr.content);
+        }
+      });
+    }
+
+    return ok(undefined);
+  }
+
+}
