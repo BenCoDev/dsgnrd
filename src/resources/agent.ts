@@ -38,7 +38,7 @@ export class AgentResource {
       .select()
       .from(evolutions)
       .where(eq(evolutions.agent, this.data.id))
-      .orderBy(desc(evolutions.created));
+      .orderBy(desc(evolutions.created), desc(evolutions.id));
   }
 
   private async finalize(): Promise<AgentResource> {
@@ -46,7 +46,7 @@ export class AgentResource {
       .select()
       .from(evolutions)
       .where(eq(evolutions.agent, this.data.id))
-      .orderBy(desc(evolutions.created))
+      .orderBy(desc(evolutions.created), desc(evolutions.id))
       .limit(1);
 
     assert(latest);
@@ -161,6 +161,33 @@ export class AgentResource {
 
     this.data = updated;
     return this;
+  }
+
+  async evolve(
+    data: Omit<
+      InferInsertModel<typeof evolutions>,
+      "id" | "created" | "updated" | "experiment" | "agent"
+    >,
+  ): Promise<Result<AgentResource>> {
+    try {
+      const [created] = await db
+        .insert(evolutions)
+        .values({
+          ...data,
+          experiment: this.data.experiment,
+          agent: this.data.id,
+        })
+        .returning();
+
+      this.lastEvolution = created;
+      return ok(this);
+    } catch (error) {
+      return err(
+        "resource_creation_error",
+        "Failed to create agent evolution",
+        error,
+      );
+    }
   }
 
   toJSON(): Agent {

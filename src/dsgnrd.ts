@@ -7,7 +7,7 @@ import { ExperimentResource } from "./resources/experiment";
 
 import { getAgentProfile, listAgentProfiles } from "./agent_profile";
 import { AgentResource } from "./resources/agent";
-import { newID4 } from "./lib/utils";
+import { newID4, removeNulls } from "./lib/utils";
 import { providerFromModel } from "./models/provider";
 import { isThinkingConfig } from "./models";
 import { isAnthropicModel } from "./models/anthropic";
@@ -18,6 +18,12 @@ import { isMoonshotAIModel } from "./models/moonshotai";
 import { isDeepseekModel } from "./models/deepseek";
 import { isZhipuModel } from "./models/zhipu";
 import { isStepfunModel } from "./models/stepfun";
+
+import { Runner } from "./runner";
+import { Advisory } from "./runner/advisory";
+import { TokenUsageResource } from "./resources/token_usage";
+import { readFileContent } from "./lib/fs";
+const DEFAULT_REVIEWERS_COUNT = 4;
 
 const exitWithError = (err: Err<DsgnrdError>) => {
   console.error(
@@ -266,4 +272,170 @@ agentCmd
     );
   });
 
-program.parse();
+agentCmd
+  .command("run <name>")
+  .description("Run an agent")
+  .requiredOption("-e, --experiment <experiment>", "Experiment name")
+  .option(
+    "-r, --reviewers <reviewers>",
+    "Number of required reviewers for each publication",
+    DEFAULT_REVIEWERS_COUNT.toString(),
+  )
+  .option("-t, --tick", "Run one tick only")
+  .option("--max-tokens <tokens>", "Max tokens (in millions) before stopping run")
+  .option("--max-cost <cost>", "Max cost (in dollars) before stopping run")
+  .action(async (name, options) => {
+    const res = await experimentAndAgents({
+      experiment: options.experiment,
+      agent: name,
+    });
+    if (res.isErr()) {
+      return exitWithError(res);
+    }
+    const [experiment, agents] = res.value;
+    Advisory.register(agents.map(a => a.toJSON().name));
+
+    let reviewers = DEFAULT_REVIEWERS_COUNT;
+    if (options.reviewers) {
+      reviewers = parseInt(options.reviewers);
+      if (isNaN(reviewers) || reviewers < 0) {
+        return exitWithError(
+          err(
+            "invalid_parameters_error",
+            "Reviewers must be a valid integer greater than 0",
+          ),
+        );
+      }
+    }
+
+    if (agents.length === 0) return exitWithError(err("not_found_error", "No agents found."));
+
+    let maxTokens: number | undefined;
+    let maxCost: number | undefined;
+
+    if (options.maxTokens) {
+      maxTokens = parseInt(options.maxTokens);
+      if (isNaN(maxTokens) || maxTokens < 0) {
+        return exitWithError(
+          err(
+            "invalid_parameters_error",
+            "Max tokens must be a valid integer greater than 0",
+          ),
+        );
+      }
+      maxTokens *= 1_000_000; // convert to millions
+    }
+
+    if (options.maxCost) {
+      maxCost = parseFloat(options.maxCost);
+      if (isNaN(maxCost) || maxCost < 0) {
+        return exitWithError(
+          err(
+            "invalid_parameters_error",
+            "Max cost must be a valid number greater than 0",
+          ),
+        );
+      }
+    }
+
+    const builders = await Promise.all(
+      agents.map((a) =>
+        Runner.builder(experiment, a, {
+          reviewers,
+        }),
+      ),
+    );
+    for (const res of builders) {
+      if (res.isErr()) {
+        return exitWithError(res);
+      }
+    }
+    const runners = removeNulls(
+      builders.map((res) => {
+        if (res.isOk()) {
+          return res.value;
+        }
+        return null;
+      }),
+    );
+
+    // Run agents independently - each agent ticks without waiting for others
+    if (options.tick) {
+      // For single tick, run all concurrently and wait for completion
+      const tickResults = await Promise.all(runners.map((r) => r.tick()));
+      for (const tick of tickResults) {
+        if (tick.isErr()) {
+          return exitWithError(tick);
+        }
+      }
+      return;
+    }
+
+    // Check every 20 ticks except when near the max value
+    const shouldCheck = (
+      tickCount: number,
+      lastVal: number,
+      maxVal: number,
+    ): boolean => (lastVal / maxVal) < 0.95
+        ? tickCount % 20 === 0
+        : true;
+
+    let tickCount = 0;
+    let lastCost = await TokenUsageResource.experimentCost(experiment);
+    let lastTokens = (await TokenUsageResource.experimentTokenUsage(experiment)).total;
+    // For continuous running, start each agent in its own independent loop
+    const runnerPromises = runners.map(async (runner) => {
+      while (true) {
+        if (maxCost && shouldCheck(tickCount, lastCost, maxCost)) {
+          lastCost = await TokenUsageResource.experimentCost(experiment);
+          if (lastCost > maxCost) {
+            console.log(`Cost exceeded: ${lastCost.toFixed(2)}`);
+            process.exit(0);
+          }
+        }
+
+        // Check if max tokens is reached
+        if (maxTokens && shouldCheck(tickCount, lastTokens, maxTokens)) {
+          lastTokens = (await TokenUsageResource.experimentTokenUsage(experiment)).total;
+          if (lastTokens > maxTokens) {
+            console.log(`Tokens exceeded: ${lastTokens.toFixed(2)}`);
+            process.exit(0);
+          }
+        }
+
+        const tick = await runner.tick();
+        tickCount++;
+        if (tick.isErr()) {
+          // eslint-disable-next-line
+          throw tick;
+        }
+      }
+    });
+
+
+    // Wait for any agent to fail, then exit
+    try {
+      await Promise.all(runnerPromises);
+    } catch (error) {
+      return exitWithError(error as any);
+    }
+  });
+
+agentCmd
+  .command("instructions <name>")
+  .description("Append a saved instruction evolution from a file")
+  .requiredOption("-e, --experiment <experiment>", "Experiment name")
+  .requiredOption("-f, --file <file>", "Instruction file")
+  .action(async (name, options) => {
+    const res = await experimentAndAgents({ experiment: options.experiment, agent: name });
+    if (res.isErr()) return exitWithError(res);
+    const content = await readFileContent(options.file);
+    if (content.isErr()) return exitWithError(content);
+    for (const agent of res.value[1]) {
+      const updated = await agent.evolve({ system: content.value });
+      if (updated.isErr()) return exitWithError(updated);
+      console.log(`Saved new instructions for ${agent.toJSON().name}`);
+    }
+  });
+
+program.parseAsync().catch((cause) => exitWithError(err("invalid_parameters_error", "Command failed", cause)));
