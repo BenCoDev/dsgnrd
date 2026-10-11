@@ -1,0 +1,79 @@
+import { z } from "zod";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { AgentResource } from "@app/resources/agent";
+import { errorToCallToolResult } from "@app/lib/mcp";
+import { PublicationResource } from "@app/resources/publication";
+import { ExperimentResource } from "@app/resources/experiment";
+import { err } from "@app/lib/error";
+import { SolutionResource } from "@app/resources/solutions";
+import { GOAL_SOLUTION_SERVER_NAME as SERVER_NAME } from "@app/tools/constants";
+
+const SERVER_VERSION = "0.1.0";
+
+export async function createGoalSolutionServer(
+  experiment: ExperimentResource,
+  agent: AgentResource,
+): Promise<McpServer> {
+  const server = new McpServer({
+    name: SERVER_NAME,
+    title:
+      "Research goal solution reporting: Tools to report that a publication is the current best solution to the research goal.",
+    version: SERVER_VERSION,
+  });
+
+  server.tool(
+    "report",
+    "Report belief that a publication is the curent best/valid solution towards the research goal.",
+    {
+      publication: z
+        .string()
+        .nullable()
+        .describe(
+          "The reference of the publication. `null` if the previous solution was proven wrong and there is no current valid solution.",
+        ),
+      reason: z
+        .enum([
+          "no_previous",
+          "previous_wrong",
+          "previous_improved",
+          "new_approach",
+        ])
+        .describe("Reason for the reporting a new solution."),
+      rationale: z.string().describe("Short rationale"),
+    },
+    async ({ publication: reference, reason, rationale }) => {
+      let publication: PublicationResource | null = null;
+
+      if (reference) {
+        const publicationRes = await PublicationResource.findByReference(experiment, reference);
+        if (publicationRes.isErr()) {
+          return errorToCallToolResult(publicationRes);
+        }
+        publication = publicationRes.value;
+      }
+      if (publication && publication.toJSON().status !== "PUBLISHED") {
+        return errorToCallToolResult(
+          err("invalid_parameters_error", "Publication is not published"),
+        );
+      }
+
+      await SolutionResource.create(experiment, agent, {
+        reason,
+        rationale,
+        publication: publication ? publication.toJSON().id : null,
+      });
+
+      return {
+        isError: false,
+        content: [
+          {
+            type: "text",
+            text: `Successfully reported.`,
+          },
+        ],
+      };
+    },
+  );
+
+  return server;
+}

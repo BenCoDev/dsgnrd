@@ -1,5 +1,6 @@
+import { LLM, ModelConfig } from "./index";
 import { assertNever } from "@app/lib/assert";
-import { AnthropicModel, isAnthropicModel } from "./anthropic";
+import { AnthropicModel, isAnthropicModel, AnthropicLLM } from "./anthropic";
 import { GeminiModel, isGeminiModel } from "./gemini";
 import { isMistralModel, MistralModel } from "./mistral";
 import { isMoonshotAIModel, MoonshotAIModel } from "./moonshotai";
@@ -63,3 +64,8 @@ export function providerFromModel(
   else assertNever(model);
 }
 
+
+export function createLLM(model: Model, config: ModelConfig = {}): LLM {
+  if (isAnthropicModel(model)) return new AnthropicLLM(config, model);
+  throw new Error(`Execution for provider ${providerFromModel(model)} is not implemented in dsgnrd.`);
+}

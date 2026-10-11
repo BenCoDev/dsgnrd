@@ -52,7 +52,7 @@ test("create/list persist upstream problem references without reading briefs or 
       assert.notEqual(cli("experiment", "create", "first", "-p", external).status, 0);
       assert.equal((db.prepare("select count(*) as n from experiments").get() as any).n, 3);
       const tables = db.prepare("select name from sqlite_master where type = 'table'").all() as {name: string}[];
-      assert.deepEqual(tables.map(t => t.name).filter(n => !n.startsWith("__") && !n.startsWith("sqlite_")).sort(), ["agents", "evolutions", "experiments"]);
+      assert.deepEqual(tables.map(t => t.name).filter(n => !n.startsWith("__") && !n.startsWith("sqlite_")).sort(), ["agents", "citations", "evolutions", "experiments", "messages", "publications", "reviews", "solutions", "token_usages"]);
     } finally { db.close(); }
   } finally { rmSync(workspace, { recursive: true, force: true }); }
 });
