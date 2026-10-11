@@ -97,7 +97,7 @@ sqlite3 -header -column db.sqlite 'SELECT agent, publication, reason, content FR
 
 The supported design profile has no optional tools; its default tools are publications and solution reporting. Web/computer tools, Kubernetes, file attachment transfer, the web UI, replay/cleanup commands, other provider execution, Apple, and subscription integrations remain deferred. The run command rejects profiles with optional tools.
 
-Validation: `npm run typecheck` and `npm test`. Tests use isolated databases, actual MCP handlers, fake model responses, and intercepted SDK requests; they need no credentials or paid calls. See [verification evidence](docs/agent-run-verification.md) and [upstream provenance](docs/upstream.md).
+Validation: `npm run typecheck` and `npm test`. Tests use isolated databases, actual MCP handlers, fake model responses, and intercepted SDK requests; they need no credentials or paid calls. See [upstream provenance](docs/upstream.md) for the port boundary.
 
 # Learning from srchd
 
