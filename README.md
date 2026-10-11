@@ -2,81 +2,31 @@
 
 This is a learning project to explore how agents can cooperate in design collaboration, drawing on the [dust-tt/srchd](https://github.com/dust-tt/srchd) project.
 
-# How to start - Create an experiment from a demo problem
+# Quickstart
 
-Requires Node.js 24.15+ and npm 12+. With nvm installed, run from this repository:
+Requires Node.js 24.15+ and npm 12+. From the repository root, run `npm ci` and `npm run migrate`, then add `ANTHROPIC_API_KEY=your-key` to `.env` (ignored by Git).
+
+## 1. Create an experiment
+
+Use the included [Oldskaters brief](problems/oldskaters/trick-reveal/problem.md):
 
 ```bash
-nvm install
-nvm use
-npm install --global npm@12.0.2
-npm ci
-npm run migrate
-
 npx tsx src/dsgnrd.ts experiment create oldskaters-reveal \
   -p problems/oldskaters/trick-reveal
-npx tsx src/dsgnrd.ts experiment list
 ```
 
-The included [Oldskaters problem](problems/oldskaters/trick-reveal/problem.md) explores trick-video aspect ratios while preserving the fun of the reveal. Use another experiment name to repeat the exercise.
+## 2. Create agents and run
 
-You should see `oldskaters-reveal` with `oldskaters/trick-reveal` as its stored problem reference. The command passes the folder containing `problem.md`, following srchd's folder convention. Creation checks that the path exists and saves it; it does not read or copy the problem text. No agents run and no model credentials are needed.
-
-Use `-p /absolute/path/to/your/problem.md` for your own file. Like srchd, folder inputs are also accepted; `problem.md` and optional `data/` are used later when agents run. A nonexistent path fails without creating a record. Names must be unique. Listing an empty database returns a not-found error, as in srchd.
-
-Commands use `./db.sqlite` by default. To use another **dsgnrd** database, set `DATABASE_PATH` to the same path for migration and every command. Keep it separate from srchd's database and run commands from this repository root.
-
-# Create and run an agent
-
-Create a Haiku agent using the [design instructions](agents/design/prompt.md). Skip creation if it already exists.
+Create two Haiku agents using the [design instructions](agents/design/prompt.md), then run them with one peer reviewer each:
 
 ```bash
-npx tsx src/dsgnrd.ts agent create -e oldskaters-reveal -n designer -p design \
-  -m claude-haiku-4-5
-npx tsx src/dsgnrd.ts agent list -e oldskaters-reveal
-```
-
-Add `ANTHROPIC_API_KEY=your-key` to `.env` (ignored by Git), then run one turn:
-
-```bash
-npx tsx --env-file=.env src/dsgnrd.ts agent run designer \
-  -e oldskaters-reveal --reviewers 0 --tick
-```
-
-Repeat to continue the saved conversation. `--reviewers 0` allows publishing without peer review. Remove `--tick` to run continuously; stop with Ctrl-C.
-
-## Run two collaborating agents
-
-```bash
-npx tsx src/dsgnrd.ts agent create -e oldskaters-reveal -n critic -p design \
-  -m claude-haiku-4-5
+npx tsx src/dsgnrd.ts agent create -e oldskaters-reveal -n designer \
+  -p design -m claude-haiku-4-5 -c 2
 npx tsx --env-file=.env src/dsgnrd.ts agent run all \
   -e oldskaters-reveal --reviewers 1 --tick
 ```
 
-Repeat to let agents submit, review, and improve proposals. Each publication needs one other agent's review.
-
-## Update instructions
-
-After editing the design prompt, save a new evolution and restart the agent:
-
-```bash
-npx tsx src/dsgnrd.ts agent instructions designer -e oldskaters-reveal \
-  -f agents/design/prompt.md
-```
-
-Previous instructions and messages are preserved. Agents cannot edit their own instructions yet.
-
-## Inspect results
-
-Publications, reviews, solutions, messages, and token usage are saved in `db.sqlite`.
-
-```bash
-sqlite3 -header -column db.sqlite 'SELECT reference, title, status FROM publications;'
-sqlite3 -header -column db.sqlite 'SELECT agent, publication, reason FROM solutions;'
-```
-
-Checks: `npm run typecheck` and `npm test`. See [upstream provenance](docs/upstream.md) for supported features and limitations.
+Repeat only the run command to continue. Remove `--tick` to run continuously; stop with Ctrl-C. Conversations and results are saved in `db.sqlite`.
 
 # Learning from srchd
 
