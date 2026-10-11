@@ -10,6 +10,7 @@ import { createServer } from "../../src/tools";
 import { DEFAULT_TOOLS } from "../../src/tools/constants";
 import { writeFileSync } from "node:fs";
 class FixtureModel extends LLM {
+  private calls = 0;
   constructor() {
     super({});
   }
@@ -29,11 +30,13 @@ class FixtureModel extends LLM {
     tools: Tool[],
   ) {
     writeFileSync(
-      process.env.CAPTURE!,
+      this.calls === 0 ? process.env.CAPTURE! : `${process.env.CAPTURE}.${this.calls}`,
       JSON.stringify({ messages, prompt, tools }),
     );
     return ok({
-      message: JSON.parse(process.env.RESPONSE!) as Message,
+      message: (process.env.RESPONSES
+        ? JSON.parse(process.env.RESPONSES)[this.calls++]
+        : JSON.parse(process.env.RESPONSE!)) as Message,
       ...(process.env.NO_USAGE
         ? {}
         : {
@@ -56,9 +59,10 @@ async function main() {
     process.env.AGENT ?? "author",
   );
   if (a.isErr()) throw a.error;
+  if (process.env.NO_OPTIONAL_TOOLS) a.value.toJSON().profile.tools = [];
   Advisory.register([a.value.toJSON().name]);
   const clients = await Promise.all(
-    DEFAULT_TOOLS.map(async (tool) => {
+    [...a.value.toJSON().profile.tools, ...DEFAULT_TOOLS].map(async (tool) => {
       const server = await createServer(tool, {
         experiment: e.value,
         agent: a.value,
@@ -75,8 +79,11 @@ async function main() {
       new FixtureModel(),
     );
     if (r.isErr()) throw r.error;
-    const result = await r.value.tick();
-    if (result.isErr()) throw result.error;
+    const count = process.env.RESPONSES ? JSON.parse(process.env.RESPONSES).length : 1;
+    for (let i = 0; i < count; i++) {
+      const result = await r.value.tick();
+      if (result.isErr()) throw result.error;
+    }
   } finally {
     await Promise.all(clients.map((c) => c.close()));
   }

@@ -18,10 +18,10 @@ Inherited behavior: duplicate names fail the unique constraint; an empty list ex
 
 Agent slice:
 
-- Unchanged: `src/agent_profile.ts`, `src/lib/fs.ts`, `src/lib/async.ts`, `src/lib/assert.ts`, and `src/tools/constants.ts`. Tool constants describe profile settings; no tools execute yet.
+- Unchanged: `src/agent_profile.ts`, `src/lib/fs.ts`, `src/lib/async.ts`, and `src/lib/assert.ts`.
 - `src/resources/agent.ts`: upstream resource with deletion deferred; creation saves the first evolution and loading reads its saved instructions.
 - `src/models/`: unchanged model types, predicates, provider mapping, and thinking validation, in their upstream files. Anthropic execution and the factory are now included as described below; other provider execution remains deferred.
-- `agents/design/`: reusable design instructions and settings in upstream format, with no optional tools.
+- `agents/design/`: reusable design instructions and settings in upstream format, with the optional self-editing group enabled.
 
 Inherited agent behavior: names are unique within an experiment; `-c` uses `parseInt` and multiple agents get random suffixes; listing reloads profile settings from disk, while instructions come from the saved evolution. Agent and evolution insertion are separate writes, as upstream. Profiles must remain available on disk. Model names follow the pinned source; creation does not check provider availability.
 
@@ -32,13 +32,21 @@ Inherited agent behavior: names are unique within an experiment; `-c` uses `pars
 - `src/runner/config.ts`, `src/runner/advisory.ts`: copied unchanged. Advisories remain in memory, indexed by agent name, and do not become a durable notification service.
 - `src/resources/messages.ts`, `token_usage.ts`, `publication.ts`, and `solutions.ts`: copied unchanged. Review assignment/storage and citation handling remain in `PublicationResource`.
 - `src/models/index.ts`, `src/models/anthropic.ts`: copied unchanged, including token accounting, context limits, and pricing assumptions. `provider.ts` retains the factory pattern with only the Anthropic execution branch; unsupported provider execution throws and the builder reports it. Model metadata for the other providers is retained.
-- `src/lib/mcp.ts`: upstream in-memory MCP pairing and tool error conversion, with the project error type renamed. Existing string-edit helpers are retained but no self-editing server is registered.
-- `src/tools/publications.ts`: upstream handlers and collaboration rules, with the conditional computer attachment parameter/transfer/download branches and their imports omitted. Publication headers still expose attachment lists in upstream format. `goal_solution.ts` is unchanged. The tool factory supports the two default groups and rejects deferred optional tools.
+- `src/lib/mcp.ts`: upstream in-memory MCP pairing and tool error conversion, with the project error type renamed. The upstream string-edit helpers are used by the optional self-editing server.
+- `src/tools/publications.ts`: upstream handlers and collaboration rules, with the conditional computer attachment parameter/transfer/download branches and their imports omitted. Publication headers still expose attachment lists in upstream format. `goal_solution.ts` is unchanged. The tool factory supports the two default groups plus optional self-editing, and rejects deferred web/computer tools.
 - `src/dsgnrd.ts`: upstream run command and experiment-wide stopping behavior, excluding computer provisioning. Empty agent selection returns a clear error. A new `agent instructions <name> -e <experiment> -f <file>` setup command calls upstream `AgentResource.evolve()`; it is not an agent-accessible tool. Async command failures use the existing error printer.
 - `src/resources/agent.ts`: adds upstream `evolve()`. Evolution queries add descending ID as a timestamp tie-breaker because SQLite timestamps have second precision; an immediate update must remain the latest version after reload.
 - `src/migrations/0002_agent_run.sql`: additive migration for messages, token usage, publications, reviews, citations, and solutions. Existing rows and upstream schema relationships are preserved.
 - `agents/design/prompt.md`: domain-specific publication/review/solution guidance. No collaboration algorithm changes.
 
-Deferred: non-Anthropic provider execution, optional web/computer tools, Kubernetes and image building, attachments, UI/server, replay/cleanup, and autonomous prompt editing. Apple and subscription access have separate stories. The pinned source contains self-editing handlers but does not register their tool group in its lists or factory.
+Deferred: non-Anthropic provider execution, optional web/computer tools, Kubernetes and image building, attachments, UI/server, replay/cleanup. Apple and subscription access have separate stories. The pinned source contains self-editing handlers but does not register their tool group in its lists or factory; dsgnrd explicitly enables them as described below.
 
 Inherited limitations: tool effects precede response persistence; writes are not a single transaction; retries can incur multiple API calls; continuous token/cost limits are periodic experiment-wide checks and can overshoot; `--tick` bypasses those checks. Cost calculation uses each agent's current model, so changing models does not preserve historical pricing. Publication timestamps and solution timestamps retain upstream ordering semantics.
+
+## Agent self-editing
+
+`src/tools/system_prompt_self_edit.ts` is copied unchanged from the pinned source. Its `append` and `edit` handlers use the existing `AgentResource.evolve()` to save instructions and update the in-memory agent, so the next tick uses the new version. No schema or orchestration changes are introduced.
+
+Unlike the pinned upstream wiring, dsgnrd registers this group as an optional profile tool and enables it for `design`. Prompt guidance encourages focused changes from reusable lessons, without an automatic trigger. Other agents, the brief and profile files are not edited. Existing agents reload profile tools when started, but retain their saved instructions; to adopt the updated prompt deliberately, use `agent instructions <name> -e <experiment> -f agents/design/prompt.md` before restarting. This setup update is separate from an agent-requested evolution.
+
+The port retains upstream concurrent tool dispatch and full-prompt writes. Multiple self-edit calls in one response can overwrite each other's changes; the prompt asks for one focused self-edit at a time.
