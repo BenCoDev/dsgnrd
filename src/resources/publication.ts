@@ -132,7 +132,7 @@ export class PublicationResource {
     const [result] = await db
       .select()
       .from(publications)
-      .where(eq(publications.id, id))
+      .where(and(eq(publications.id, id), eq(publications.experiment, experiment.toJSON().id)))
       .limit(1);
 
     if (!result) return err("not_found_error", `Publication not found for id: ${id}`);

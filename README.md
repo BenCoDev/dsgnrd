@@ -30,6 +30,16 @@ npx tsx --env-file=.env src/dsgnrd.ts agent run all \
 
 Repeat only the run command to continue. Remove `--tick` to run continuously; stop with Ctrl-C. Conversations and results are saved in `db.sqlite`.
 
+## 3. Inspect the experiment
+
+```bash
+npx tsx src/dsgnrd.ts serve
+```
+
+Open [localhost:1337](http://localhost:1337) to browse publications, reviews, solutions, conversations, instruction changes and estimated cost. No API key is needed. Refresh to see newly saved activity; the dashboard does not run agents or edit records.
+
+Use `--port 1338` for another port, or `DATABASE_PATH=/path/to/db.sqlite` to inspect a different migrated database. The server listens on your computer only.
+
 # Learning from srchd
 
 To optimise for learning, I chose to preserve srchd's architecture as much as possible. The same relationships connect agents, their contributions, their reviews, and the solutions they currently favor.

@@ -68,7 +68,7 @@ export class SolutionResource {
           eq(solutions.agent, agent.toJSON().id),
         ),
       )
-      .orderBy(desc(solutions.created))
+      .orderBy(desc(solutions.created), desc(solutions.id))
       .limit(1);
 
     if (!result) {
@@ -91,7 +91,7 @@ export class SolutionResource {
           eq(solutions.agent, agent.toJSON().id),
         ),
       )
-      .orderBy(desc(solutions.created));
+      .orderBy(desc(solutions.created), desc(solutions.id));
 
     return await concurrentExecutor(
       results,
@@ -107,7 +107,7 @@ export class SolutionResource {
       .select()
       .from(solutions)
       .where(and(eq(solutions.experiment, experiment.toJSON().id)))
-      .orderBy(desc(solutions.created));
+      .orderBy(desc(solutions.created), desc(solutions.id));
 
     return await concurrentExecutor(
       results,
