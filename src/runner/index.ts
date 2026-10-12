@@ -61,8 +61,11 @@ export class Runner {
     agent: AgentResource,
     config: RunConfig,
   ): Promise<Result<Runner>> {
-    if (agent.toJSON().profile.tools.length > 0) {
-      return err("invalid_parameters_error", "Optional tools are not implemented. Use the design profile with tools: [].");
+    const unsupportedTools = agent.toJSON().profile.tools.filter(
+      (tool) => tool !== "system_prompt_self_edit",
+    );
+    if (unsupportedTools.length > 0) {
+      return err("invalid_parameters_error", `Optional tools are not implemented: ${unsupportedTools.join(", ")}.`);
     }
     let model: LLM;
     try {

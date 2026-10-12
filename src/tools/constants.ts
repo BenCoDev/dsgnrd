@@ -5,7 +5,11 @@ export const SYSTEM_PROMPT_SELF_EDIT_SERVER_NAME =
   "system_prompt_self_edit" as const;
 export const WEB_SERVER_NAME = "web" as const;
 
-export const NON_DEFAULT_TOOLS = [COMPUTER_PROCESS_SERVER_NAME, WEB_SERVER_NAME];
+export const NON_DEFAULT_TOOLS = [
+  COMPUTER_PROCESS_SERVER_NAME,
+  WEB_SERVER_NAME,
+  SYSTEM_PROMPT_SELF_EDIT_SERVER_NAME,
+];
 
 export const DEFAULT_TOOLS = [
   GOAL_SOLUTION_SERVER_NAME,

@@ -164,6 +164,8 @@ test("migration, cross-process ticks, peer review, citations, solution reports a
         "publications-list_review_requests",
         "publications-list_submitted_publications",
         "publications-submit_review",
+        "system_prompt_self_edit-append",
+        "system_prompt_self_edit-edit",
       ].sort(),
     );
     assert.equal(lastResult().isError, false);
@@ -413,6 +415,69 @@ test("migration, cross-process ticks, peer review, citations, solution reports a
     ]);
     assert.notEqual(unsupported.status, 0);
     assert.match(unsupported.stderr, /not implemented/);
+
+    // Real MCP self-edits update the same in-memory agent before the next tick.
+    const versionsBefore = all("select * from evolutions order by id");
+    const messagesBefore = all("select * from messages order by id");
+    const profileBefore = readFileSync(join(root, "agents/design/prompt.md"), "utf8");
+    const briefBefore = readFileSync(join(root, "problems/oldskaters/trick-reveal/problem.md"), "utf8");
+    const sequence = [
+      [tool("system_prompt_self_edit-append", { new_str: "\nCheck footage constraints." })],
+      [tool("system_prompt_self_edit-edit", {
+        old_str: "Check footage constraints.",
+        new_str: "Check source footage before proposing crops.",
+      })],
+      [tool("system_prompt_self_edit-edit", {
+        old_str: "Text that is not in these instructions",
+        new_str: "Should not be saved",
+      })],
+      [tool("system_prompt_self_edit-edit", {
+        old_str: "Check source footage before proposing crops.",
+        new_str: "Should not be saved",
+        expected_replacements: 2,
+      })],
+      [text("Continue using the revised approach.")],
+    ].map(content => ({ role: "agent", content }));
+    const edited = exec("tests/fixtures/run-tick.ts", [], {
+      AGENT: "author",
+      RESPONSES: JSON.stringify(sequence),
+      CAPTURE: join(dir, "self-edit.json"),
+    });
+    assert.equal(edited.status, 0, edited.stdout + edited.stderr);
+    const capture = (suffix: string) => JSON.parse(readFileSync(join(dir, `self-edit.json${suffix}`), "utf8"));
+    assert.doesNotMatch(capture("").prompt, /Check footage constraints/);
+    assert.match(capture(".1").prompt, /Check footage constraints\./);
+    const expected = "UPDATED DESIGN INSTRUCTIONS\nCheck source footage before proposing crops.";
+    for (const suffix of [".2", ".3", ".4"]) {
+      assert.ok(capture(suffix).prompt.endsWith(expected));
+    }
+    const versionsAfter = all("select * from evolutions order by id");
+    assert.deepEqual(versionsAfter.slice(0, versionsBefore.length), versionsBefore);
+    const added = versionsAfter.slice(versionsBefore.length);
+    assert.equal(added.length, 2);
+    assert.ok(added.every(v => v.agent === pub.author && v.experiment === pub.experiment));
+    assert.equal(added[0].system, "UPDATED DESIGN INSTRUCTIONS\nCheck footage constraints.");
+    assert.equal(added[1].system, expected);
+    assert.deepEqual(all("select * from messages order by id").slice(0, messagesBefore.length), messagesBefore);
+    const exchanges = all("select content from messages where id > ? and role='user' order by id", messagesBefore.at(-1).id)
+      .flatMap(m => JSON.parse(m.content)).filter(c => c.type === "tool_result");
+    assert.deepEqual(exchanges.map(c => c.isError), [false, false, true, true]);
+    assert.equal(readFileSync(join(root, "agents/design/prompt.md"), "utf8"), profileBefore);
+    assert.equal(readFileSync(join(root, "problems/oldskaters/trick-reveal/problem.md"), "utf8"), briefBefore);
+    assert.ok(tick("author", [text("Resumed with evolved instructions.")], 0).prompt.endsWith(expected));
+
+    // The group is optional: a profile with no extras cannot invoke it.
+    const unavailable = exec("tests/fixtures/run-tick.ts", [], {
+      AGENT: "reviewer",
+      NO_OPTIONAL_TOOLS: "1",
+      RESPONSE: JSON.stringify({ role: "agent", content: [tool("system_prompt_self_edit-append", {new_str: "Not allowed"})] }),
+      CAPTURE: join(dir, "no-self-edit.json"),
+    });
+    assert.equal(unavailable.status, 0, unavailable.stdout + unavailable.stderr);
+    const noTools = JSON.parse(readFileSync(join(dir, "no-self-edit.json"), "utf8"));
+    assert.ok(noTools.tools.every((t: any) => !t.name.startsWith("system_prompt_self_edit-")));
+    assert.equal(lastResult("reviewer").isError, true);
+    assert.equal(one("select count(*) n from evolutions").n, versionsAfter.length);
   } finally {
     db.close();
     rmSync(dir, { recursive: true, force: true });

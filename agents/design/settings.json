@@ -1,5 +1,5 @@
 {
   "description": "Explore design directions and explain their tradeoffs.",
-  "tools": [],
+  "tools": ["system_prompt_self_edit"],
   "env": []
 }

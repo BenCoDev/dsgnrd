@@ -1,5 +1,6 @@
 import { createGoalSolutionServer } from "./goal_solution";
 import { createPublicationsServer } from "./publications";
+import { createSystemPromptSelfEditServer } from "./system_prompt_self_edit";
 import { ToolName } from "./constants";
 import type { AgentResource } from "@app/resources/agent";
 import type { ExperimentResource } from "@app/resources/experiment";
@@ -19,6 +20,8 @@ export async function createServer(
   },
 ): Promise<McpServer> {
   switch (tool) {
+    case "system_prompt_self_edit":
+      return createSystemPromptSelfEditServer(agent);
     case "goal_solution":
       return createGoalSolutionServer(experiment, agent);
     case "publications":
