@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import type { BasicAuthConfig } from "./server";
 import { Command } from "commander";
 import { problemPathFromInput } from "./lib/problem";
 import { Err, err, ok, Result, DsgnrdError } from "./lib/error";
@@ -437,5 +438,62 @@ agentCmd
       console.log(`Saved new instructions for ${agent.toJSON().name}`);
     }
   });
+
+program
+  .command("serve")
+  .description("Start the web UI server")
+  .option("-p, --port <port>", "Port to serve on", "1337")
+  .option("-a, --auth <user:password>", "Require HTTP basic auth credentials")
+  .action(async (options) => {
+    const port = Number(options.port);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      return exitWithError(
+        err(
+          "invalid_parameters_error",
+          "Port must be a valid number between 1 and 65535",
+        ),
+      );
+    }
+
+    let authConfig: BasicAuthConfig | undefined;
+    if (options.auth) {
+      const separator = String(options.auth).indexOf(":");
+      if (separator === -1) {
+        return exitWithError(
+          err(
+            "invalid_parameters_error",
+            "Auth must be provided as user:password",
+          ),
+        );
+      }
+      const username = options.auth.slice(0, separator);
+      const password = options.auth.slice(separator + 1);
+      if (!username || !password) {
+        return exitWithError(
+          err(
+            "invalid_parameters_error",
+            "Auth must include both user and password",
+          ),
+        );
+      }
+      authConfig = { username, password };
+    }
+
+    console.log(`Starting server on http://localhost:${port}`);
+    if (authConfig) {
+      console.log(`Basic auth enabled for user '${authConfig.username}'`);
+    }
+
+    const { createApp } = await import("./server");
+    const { serve } = await import("@hono/node-server");
+    const app = createApp(authConfig);
+
+    serve({
+      fetch: app.fetch,
+      port,
+      hostname: "127.0.0.1",
+    });
+  });
+
 
 program.parseAsync().catch((cause) => exitWithError(err("invalid_parameters_error", "Command failed", cause)));
