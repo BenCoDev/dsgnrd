@@ -1,3 +1,5 @@
+_Sharing news on this project from [my substack](https://substack.com/@benzercotte/note/c-358201386?r=62mul&utm_source=notes-share-action&utm_medium=web)_
+
 # Objective
 
 This is a learning project to explore how agents can cooperate in design collaboration, drawing on the [dust-tt/srchd](https://github.com/dust-tt/srchd) project.
