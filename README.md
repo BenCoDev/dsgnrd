@@ -6,7 +6,7 @@ This is a learning project to explore how agents can cooperate in design collabo
 
 # Quickstart
 
-Requires Node.js 24.15+ and npm 12+. From the repository root, run `npm ci` and `npm run migrate`, then add `ANTHROPIC_API_KEY=your-key` to `.env` (ignored by Git).
+Requires Node.js 24.15+ and npm 12+. From the repository root, run `npm ci` and `npm run migrate`, then add `ANTHROPIC_API_KEY=your-key` and `FIRECRAWL_API_KEY=your-key` to `.env` (ignored by Git).
 
 ## 1. Create an experiment
 
@@ -29,6 +29,8 @@ npx tsx --env-file=.env src/dsgnrd.ts agent run all \
 ```
 
 Repeat only the run command to continue. Remove `--tick` to run continuously; stop with Ctrl-C. Conversations and results are saved in `db.sqlite`.
+
+Design agents can inspect public websites through Firecrawl: screenshots and page text are saved in their conversations. For open → inspect → click → inspect, run continuously: a browser session is reused between ticks but closes when the command ends, including `--tick`. Each agent gets at most two five-minute sessions per invocation and ten actions per session. Firecrawl credits are separate from model costs and are **not included in `--max-cost`**. Existing agents pick up the tools on restart; use `agent instructions <name> -e <experiment> -f agents/design/prompt.md` to deliberately adopt the updated guidance.
 
 ## 3. Inspect the experiment
 

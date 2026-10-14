@@ -346,80 +346,76 @@ agentCmd
         }),
       ),
     );
-    for (const res of builders) {
-      if (res.isErr()) {
-        return exitWithError(res);
-      }
-    }
-    const runners = removeNulls(
-      builders.map((res) => {
-        if (res.isOk()) {
-          return res.value;
-        }
-        return null;
-      }),
-    );
-
-    // Run agents independently - each agent ticks without waiting for others
-    if (options.tick) {
-      // For single tick, run all concurrently and wait for completion
-      const tickResults = await Promise.all(runners.map((r) => r.tick()));
-      for (const tick of tickResults) {
-        if (tick.isErr()) {
-          return exitWithError(tick);
-        }
-      }
-      return;
-    }
-
-    // Check every 20 ticks except when near the max value
-    const shouldCheck = (
-      tickCount: number,
-      lastVal: number,
-      maxVal: number,
-    ): boolean => (lastVal / maxVal) < 0.95
-        ? tickCount % 20 === 0
-        : true;
-
-    let tickCount = 0;
-    let lastCost = await TokenUsageResource.experimentCost(experiment);
-    let lastTokens = (await TokenUsageResource.experimentTokenUsage(experiment)).total;
-    // For continuous running, start each agent in its own independent loop
-    const runnerPromises = runners.map(async (runner) => {
-      while (true) {
-        if (maxCost && shouldCheck(tickCount, lastCost, maxCost)) {
-          lastCost = await TokenUsageResource.experimentCost(experiment);
-          if (lastCost > maxCost) {
-            console.log(`Cost exceeded: ${lastCost.toFixed(2)}`);
-            process.exit(0);
-          }
-        }
-
-        // Check if max tokens is reached
-        if (maxTokens && shouldCheck(tickCount, lastTokens, maxTokens)) {
-          lastTokens = (await TokenUsageResource.experimentTokenUsage(experiment)).total;
-          if (lastTokens > maxTokens) {
-            console.log(`Tokens exceeded: ${lastTokens.toFixed(2)}`);
-            process.exit(0);
-          }
-        }
-
-        const tick = await runner.tick();
-        tickCount++;
-        if (tick.isErr()) {
-          // eslint-disable-next-line
-          throw tick;
-        }
-      }
-    });
-
-
-    // Wait for any agent to fail, then exit
+    const runners = removeNulls(builders.map((res) => res.isOk() ? res.value : null));
+    let stopping = false;
+    let runError: Err<DsgnrdError> | undefined;
+    const cleanup = () => Promise.all(runners.map((r) => r.close()));
+    // A handled signal closes remote resources before exiting; TTL covers hard kills.
+    const onSignal = () => {
+      stopping = true;
+      void cleanup().finally(() => process.exit(130));
+    };
+    process.once("SIGINT", onSignal);
+    process.once("SIGTERM", onSignal);
     try {
-      await Promise.all(runnerPromises);
+      const failed = builders.find((res) => res.isErr());
+      if (failed?.isErr()) throw failed;
+      if (options.tick) {
+        const results = await Promise.allSettled(runners.map((r) => r.tick()));
+        for (const result of results) {
+          if (result.status === "rejected") throw result.reason;
+          if (result.value.isErr()) throw result.value;
+        }
+      } else {
+        // Preserve upstream independent loops and periodic experiment-wide limits.
+        const shouldCheck = (count: number, last: number, max: number) =>
+          last / max < 0.95 ? count % 20 === 0 : true;
+        let tickCount = 0;
+        let lastCost = await TokenUsageResource.experimentCost(experiment);
+        let lastTokens = (await TokenUsageResource.experimentTokenUsage(experiment)).total;
+        const loops = runners.map(async (runner) => {
+          try {
+            while (!stopping) {
+              if (maxCost && shouldCheck(tickCount, lastCost, maxCost)) {
+                lastCost = await TokenUsageResource.experimentCost(experiment);
+                if (lastCost > maxCost) {
+                  console.log(`Cost exceeded: ${lastCost.toFixed(2)}`);
+                  stopping = true;
+                  return;
+                }
+              }
+              if (maxTokens && shouldCheck(tickCount, lastTokens, maxTokens)) {
+                lastTokens = (await TokenUsageResource.experimentTokenUsage(experiment)).total;
+                if (lastTokens > maxTokens) {
+                  console.log(`Tokens exceeded: ${lastTokens.toFixed(2)}`);
+                  stopping = true;
+                  return;
+                }
+              }
+              if (stopping) return;
+              const tick = await runner.tick();
+              tickCount++;
+              if (tick.isErr()) throw tick;
+            }
+          } catch (error) {
+            stopping = true;
+            throw error;
+          }
+        });
+        // Let in-flight ticks save their exchanges before closing their tool servers.
+        const results = await Promise.allSettled(loops);
+        const failedLoop = results.find((r) => r.status === "rejected");
+        if (failedLoop?.status === "rejected") throw failedLoop.reason;
+      }
     } catch (error) {
-      return exitWithError(error as any);
+      runError = error instanceof Err ? error : err("tool_error", "Run failed", error);
+    } finally {
+      stopping = true;
+      await cleanup();
+      process.removeListener("SIGINT", onSignal);
+      process.removeListener("SIGTERM", onSignal);
     }
+    if (runError) return exitWithError(runError);
   });
 
 agentCmd

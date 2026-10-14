@@ -10,6 +10,7 @@ import {
 } from "@app/models";
 import { AgentResource } from "@app/resources/agent";
 import { ExperimentResource } from "@app/resources/experiment";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { withRetries, Result, err, ok } from "@app/lib/error";
 import { MessageResource } from "@app/resources/messages";
@@ -31,6 +32,18 @@ export class Runner {
   private agent: AgentResource;
   private mcpClients: Client[];
   private model: LLM;
+  private servers: McpServer[] = [];
+  private closing?: Promise<void>;
+
+  close(): Promise<void> {
+    return this.closing ??= (async () => {
+      const results = await Promise.allSettled(this.servers.map((s) => s.close()));
+      await Promise.allSettled(this.mcpClients.map((c) => c.close()));
+      if (results.some((r) => r.status === "rejected")) {
+        console.warn("Browser cleanup failed; remote session expiry remains in effect.");
+      }
+    })();
+  }
 
   private contextPruning: {
     lastAgentLoopStartIdx: number;
@@ -62,7 +75,7 @@ export class Runner {
     config: RunConfig,
   ): Promise<Result<Runner>> {
     const unsupportedTools = agent.toJSON().profile.tools.filter(
-      (tool) => tool !== "system_prompt_self_edit",
+      (tool) => tool !== "system_prompt_self_edit" && tool !== "web",
     );
     if (unsupportedTools.length > 0) {
       return err("invalid_parameters_error", `Optional tools are not implemented: ${unsupportedTools.join(", ")}.`);
@@ -90,6 +103,7 @@ export class Runner {
       return runner;
     }
 
+    runner.value.servers = servers;
     return ok(runner.value);
   }
 
@@ -151,7 +165,10 @@ export class Runner {
             const result = await client.callTool({
               name: tool.name,
               arguments: t.input,
-            });
+            }, undefined, client.getServerVersion()?.name === "web"
+              // Allow bounded browser requests plus queued operations and cleanup.
+              ? { timeout: 180_000 }
+              : undefined);
 
             // console.log(result);
             // console.log(JSON.stringify(result, null, 2));

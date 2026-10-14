@@ -166,6 +166,7 @@ test("migration, cross-process ticks, peer review, citations, solution reports a
         "publications-submit_review",
         "system_prompt_self_edit-append",
         "system_prompt_self_edit-edit",
+        "web-open", "web-act", "web-close",
       ].sort(),
     );
     assert.equal(lastResult().isError, false);
@@ -478,6 +479,26 @@ test("migration, cross-process ticks, peer review, citations, solution reports a
     assert.ok(noTools.tools.every((t: any) => !t.name.startsWith("system_prompt_self_edit-")));
     assert.equal(lastResult("reviewer").isError, true);
     assert.equal(one("select count(*) n from evolutions").n, versionsAfter.length);
+    assert.ok(noTools.tools.every((t: any) => !t.name.startsWith("web-")));
+    for (const mode of ["tick", "failure", "signal", "budget"]) {
+      const log = join(dir, `close-${mode}.log`);
+      const result = exec("tests/fixtures/run-browser-cli.ts", ["agent", "run", "author", "-e", "test", "--reviewers", "0", ...(mode === "tick" ? ["--tick"] : mode === "budget" ? ["--max-cost", "1"] : [])], {
+        ANTHROPIC_API_KEY:"test-only", FIRECRAWL_API_KEY:"test-only", CLOSE_LOG:log, STOP_MODE:mode,
+      });
+      assert.equal(result.status, mode === "tick" || mode === "budget" ? 0 : mode === "signal" ? 130 : 1, result.stdout+result.stderr);
+      assert.equal(readFileSync(log,"utf8"),"closed\n");
+    }
+    const web = exec("tests/fixtures/run-tick.ts", [], {
+      AGENT: "author", WEB_FIXTURE: "1",
+      RESPONSE: JSON.stringify({role:"agent",content:[tool("web-open",{url:"https://example.com"})]}),
+      CAPTURE: join(dir,"web.json"),
+    });
+    assert.equal(web.status,0,web.stdout+web.stderr);
+    const savedImage=lastResult().content.find((c: any)=>c.type==="image");
+    assert.equal(savedImage.mimeType,"image/png");
+    const resumedWeb = tick("author",[text("Reviewing the screenshot from the previous command.")],0);
+    assert.ok(resumedWeb.messages.some((m: any)=>m.content.some((c: any)=>c.type==="tool_result" && c.content.some((v: any)=>v.type==="image" && v.data===savedImage.data))));
+
   } finally {
     db.close();
     rmSync(dir, { recursive: true, force: true });

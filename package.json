@@ -20,6 +20,7 @@
     "better-sqlite3": "^13.0.3",
     "commander": "^15.0.0",
     "drizzle-orm": "^0.45.2",
+    "firecrawl": "^4.46.0",
     "hono": "^4.13.13",
     "marked": "^18.1.1",
     "sanitize-html": "^2.18.0",
@@ -29,10 +30,10 @@
     "@types/better-sqlite3": "^9.6.0",
     "@types/json-schema": "^7.0.15",
     "@types/node": "^24.0.0",
+    "@types/sanitize-html": "^2.16.2",
     "drizzle-kit": "^0.31.4",
     "tsx": "^4.23.12",
-    "typescript": "^5.9.3",
-    "@types/sanitize-html": "^2.16.2"
+    "typescript": "^5.9.3"
   },
   "allowScripts": {
     "better-sqlite3@13.0.3": true,

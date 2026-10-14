@@ -6,6 +6,7 @@ import { AgentResource } from "../../src/resources/agent";
 import { Runner } from "../../src/runner";
 import { Advisory } from "../../src/runner/advisory";
 import { createClientServerPair } from "../../src/lib/mcp";
+import { createWebServer } from "../../src/tools/web";
 import { createServer } from "../../src/tools";
 import { DEFAULT_TOOLS } from "../../src/tools/constants";
 import { writeFileSync } from "node:fs";
@@ -61,13 +62,19 @@ async function main() {
   if (a.isErr()) throw a.error;
   if (process.env.NO_OPTIONAL_TOOLS) a.value.toJSON().profile.tools = [];
   Advisory.register([a.value.toJSON().name]);
+  const servers: Awaited<ReturnType<typeof createServer>>[] = [];
   const clients = await Promise.all(
     [...a.value.toJSON().profile.tools, ...DEFAULT_TOOLS].map(async (tool) => {
-      const server = await createServer(tool, {
+      const server = tool === "web" && process.env.WEB_FIXTURE ? createWebServer({
+        browser: async () => ({success:true,id:"fake-browser"}),
+        browserExecute: async () => ({success:true,stdout:JSON.stringify({url:"https://example.com",text:"Observed page",image:"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j4xoAAAAASUVORK5CYII="})}),
+        deleteBrowser: async () => ({success:true}),
+      }) : await createServer(tool, {
         experiment: e.value,
         agent: a.value,
         config: { reviewers: Number(process.env.REVIEWERS ?? 0) },
       });
+      servers.push(server);
       return (await createClientServerPair(server))[0];
     }),
   );
@@ -85,6 +92,7 @@ async function main() {
       if (result.isErr()) throw result.error;
     }
   } finally {
+    await Promise.all(servers.map((s) => s.close()));
     await Promise.all(clients.map((c) => c.close()));
   }
 }
