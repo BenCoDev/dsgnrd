@@ -1,3 +1,4 @@
+import { isScreenshot } from "@app/lib/images";
 import sanitizeHtml from "sanitize-html";
 import { marked } from "marked";
 import {
@@ -988,6 +989,7 @@ const renderContentBlock = (
   tags: Record<string, string>,
   content: string,
   blockClass?: string,
+  images = "",
 ) => {
   // Helper to truncate content
   const truncate = (text: string) => {
@@ -1016,6 +1018,7 @@ const renderContentBlock = (
       <div class="content-full" style="display: none;">
         ${tagContent}
         ${fullContent}
+        ${images}
       </div>
     </div>
   `;
@@ -1056,10 +1059,15 @@ const renderToolResult = (c: ToolResult, maxPreviewLength = 150) => {
     },
     c.content
       .map((c) =>
-        c.type === "text" ? c.text : JSON.stringify(c, null, 2),
+        c.type === "text" ? c.text : c.type === "image" ? "[Saved screenshot]" : JSON.stringify(c, null, 2),
       )
       .join("\n"),
     c.isError ? "tool-error" : "tool-success",
+    c.content.filter((item) => item.type === "image").map((item) =>
+      item.type === "image" && isScreenshot(item.data, item.mimeType)
+        ? `<img src="data:image/png;base64,${item.data}" alt="Saved browser observation" loading="lazy" style="max-width:100%;height:auto" />`
+        : "<p>Invalid or unsupported screenshot.</p>",
+    ).join(""),
   );
 };
 

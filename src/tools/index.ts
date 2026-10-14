@@ -1,3 +1,4 @@
+import { createWebServer } from "./web";
 import { createGoalSolutionServer } from "./goal_solution";
 import { createPublicationsServer } from "./publications";
 import { createSystemPromptSelfEditServer } from "./system_prompt_self_edit";
@@ -20,6 +21,8 @@ export async function createServer(
   },
 ): Promise<McpServer> {
   switch (tool) {
+    case "web":
+      return createWebServer();
     case "system_prompt_self_edit":
       return createSystemPromptSelfEditServer(agent);
     case "goal_solution":

@@ -80,7 +80,7 @@ test("Anthropic request conversion, token count, usage and authentication failur
             type: "tool_result",
             toolUseId: "call_old",
             toolUseName: "publications-list_publications",
-            content: [{ type: "text", text: "No publications" }],
+            content: [{ type: "text", text: "No publications" }, { type: "image", mimeType: "image/png", data: "aW1hZ2U=" }],
             isError: false,
           },
         ],
@@ -121,6 +121,7 @@ test("Anthropic request conversion, token count, usage and authentication failur
     assert.equal(body.model, "claude-haiku-4-5");
     assert.equal(body.messages[1].role, "assistant");
     assert.equal(body.messages[2].content[0].tool_use_id, "call_old");
+    assert.deepEqual(body.messages[2].content[0].content[1], {type: "image", source: {type: "base64", media_type: "image/png", data: "aW1hZ2U="}});
     assert.equal(body.system[0].text, "Design instructions");
     assert.equal(body.tools[0].input_schema.type, "object");
     assert.deepEqual(body.tool_choice, { type: "auto" });
