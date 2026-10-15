@@ -34,6 +34,7 @@ test("migration, cross-process ticks, peer review, citations, solution reports a
   );
   Object.assign(env, {
     DATABASE_PATH: join(dir, "test.sqlite"),
+    DSGNRD_MOBBIN_DIR: join(dir, "mobbin"),
     TSX_TSCONFIG_PATH: join(root, "tsconfig.json"),
   });
   const offline = join(dir, "offline.cjs");
@@ -167,6 +168,7 @@ test("migration, cross-process ticks, peer review, citations, solution reports a
         "system_prompt_self_edit-append",
         "system_prompt_self_edit-edit",
         "web-open", "web-act", "web-close",
+        "mobbin-search_screens", "mobbin-search_flows", "mobbin-search_sections",
       ].sort(),
     );
     assert.equal(lastResult().isError, false);
@@ -480,6 +482,7 @@ test("migration, cross-process ticks, peer review, citations, solution reports a
     assert.equal(lastResult("reviewer").isError, true);
     assert.equal(one("select count(*) n from evolutions").n, versionsAfter.length);
     assert.ok(noTools.tools.every((t: any) => !t.name.startsWith("web-")));
+    assert.ok(noTools.tools.every((t: any) => !t.name.startsWith("mobbin-")));
     for (const mode of ["tick", "failure", "signal", "budget"]) {
       const log = join(dir, `close-${mode}.log`);
       const result = exec("tests/fixtures/run-browser-cli.ts", ["agent", "run", "author", "-e", "test", "--reviewers", "0", ...(mode === "tick" ? ["--tick"] : mode === "budget" ? ["--max-cost", "1"] : [])], {
@@ -499,6 +502,12 @@ test("migration, cross-process ticks, peer review, citations, solution reports a
     const resumedWeb = tick("author",[text("Reviewing the screenshot from the previous command.")],0);
     assert.ok(resumedWeb.messages.some((m: any)=>m.content.some((c: any)=>c.type==="tool_result" && c.content.some((v: any)=>v.type==="image" && v.data===savedImage.data))));
 
+    tick("author", [tool("mobbin-search_screens", {query:"video discovery",platform:"ios",limit:1})],0);
+    const reference = lastResult();
+    assert.equal(reference.isError,false);
+    assert.ok(reference.content.some((c:any)=>c.type==="image"));
+    const resumedMobbin=tick("author",[text("Inspecting the saved Mobbin reference.")],0);
+    assert.ok(resumedMobbin.messages.some((m:any)=>m.content.some((c:any)=>c.type==="tool_result" && c.toolUseName==="mobbin-search_screens" && c.content.some((v:any)=>v.type==="image"))));
   } finally {
     db.close();
     rmSync(dir, { recursive: true, force: true });

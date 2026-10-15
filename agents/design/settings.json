@@ -1,5 +1,9 @@
 {
   "description": "Explore design directions and explain their tradeoffs.",
-  "tools": ["system_prompt_self_edit", "web"],
+  "tools": [
+    "system_prompt_self_edit",
+    "web",
+    "mobbin"
+  ],
   "env": []
 }

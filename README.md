@@ -19,6 +19,15 @@ npx tsx src/dsgnrd.ts experiment create oldskaters-reveal \
 
 ## 2. Create agents and run
 
+Connect Mobbin once for design references (requires a qualifying Mobbin plan):
+
+```bash
+npx tsx src/dsgnrd.ts mobbin login
+```
+
+Open the printed URL and authorize your account. Credentials stay in `~/.config/dsgnrd/mobbin`; `mobbin disconnect` removes them locally. Design agents can search screens, flows and website sections; returned previews and source links are saved in their conversations. Mobbin usage is separate from model costs and is not included in `--max-cost`.
+
+
 Create two Haiku agents using the [design instructions](agents/design/prompt.md), then run them with one peer reviewer each:
 
 ```bash

@@ -68,3 +68,14 @@ The model chooses structured clicks (viewport coordinates), scrolls and waits. H
 Sessions last at most five minutes, with two creation attempts per agent/run and ten actions per session. Calls have finite timeouts and no automatic SDK retries for side effects. Closing returns available Firecrawl credits and duration as a tool result. Provider error bodies are not persisted because they may include credentials. Firecrawl charges are separate from model estimates and `--max-cost`.
 
 The existing CLI loops now finish in-flight ticks on failure/budget stops and close their servers before exiting. Handled interruption also closes tools; remote TTL bounds sessions after hard termination. `--tick` closes sessions at command completion, so separate commands reload observations, not browsers. There is no browser session table or crash recovery mechanism. Search, authenticated sites, form workflows, video capture and computer provisioning remain deferred.
+
+
+## Mobbin design references
+
+The optional `mobbin` group is a dsgnrd addition, not a port of upstream tooling. Its local MCP server forwards the three verified search tools to `https://api.mobbin.com/mcp`, preserving the factory, in-memory pairing, runner discovery/dispatch and collaboration rules. Remote schemas are discovered and restricted to these tools; `image_format` is explicitly JPEG for compatibility. Each remote request owns and closes its connection. No database schema changes.
+
+`mobbin login` uses the MCP SDK's OAuth discovery, dynamic registration and PKCE with a loopback callback and state validation. Agent runs do not prompt for login. Credentials are written atomically with private permissions under `~/.config/dsgnrd/mobbin` (override with `DSGNRD_MOBBIN_DIR`); a cross-process lock coordinates refresh and requests for this account. Disconnect removes local credentials; remote revocation remains in Mobbin. After a hard crash, a leftover `lock` directory must be removed only after confirming no Mobbin process is active.
+
+Live contract checks verified screen, flow and section results containing JPEG image blocks, text metadata and structured content. The bridge retains previews and canonical Mobbin links, converts structured content into model-visible text, and omits remote gallery metadata. The dashboard now also renders validated JPEG previews. Images are bounded to 2 MB and 1600 pixels per dimension; aggregate results are bounded to 8 MB. Larger/unsupported responses return an explicit error. These saved previews are conversation evidence, not high-resolution exports. High-resolution URLs expire; exports and Mobbin's gallery are outside this slice.
+
+Authentication, subscription limits and service errors are explicit; no fallback search is invented. Mobbin usage is separate from the runner's model cost estimate. Existing agents reload tools on restart but retain saved instructions; adopt the new profile prompt deliberately with `agent instructions`.

@@ -1,3 +1,5 @@
+import { createMobbinServer } from "../../src/tools/mobbin";
+import mobbinTools from "./mobbin-tools.json";
 // A new process with a deterministic model, exercising the real runner and MCP tools.
 import { LLM, Message, Tool, TokenUsage } from "../../src/models";
 import { ok } from "../../src/lib/error";
@@ -65,7 +67,11 @@ async function main() {
   const servers: Awaited<ReturnType<typeof createServer>>[] = [];
   const clients = await Promise.all(
     [...a.value.toJSON().profile.tools, ...DEFAULT_TOOLS].map(async (tool) => {
-      const server = tool === "web" && process.env.WEB_FIXTURE ? createWebServer({
+      const server = tool === "mobbin" ? createMobbinServer({
+        listTools: async () => mobbinTools as any,
+        callTool: async () => ({ content: [{type:"text",text:"Reference https://mobbin.com/screens/test"},{type:"image",mimeType:"image/png",data:"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j4xoAAAAASUVORK5CYII="}] }),
+        close: async () => {},
+      }) : tool === "web" && process.env.WEB_FIXTURE ? createWebServer({
         browser: async () => ({success:true,id:"fake-browser"}),
         browserExecute: async () => ({success:true,stdout:JSON.stringify({url:"https://example.com",text:"Observed page",image:"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j4xoAAAAASUVORK5CYII="})}),
         deleteBrowser: async () => ({success:true}),

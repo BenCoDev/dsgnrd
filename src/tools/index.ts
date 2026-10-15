@@ -1,3 +1,4 @@
+import { createMobbinServer } from "./mobbin";
 import { createWebServer } from "./web";
 import { createGoalSolutionServer } from "./goal_solution";
 import { createPublicationsServer } from "./publications";
@@ -21,6 +22,8 @@ export async function createServer(
   },
 ): Promise<McpServer> {
   switch (tool) {
+    case "mobbin":
+      return createMobbinServer();
     case "web":
       return createWebServer();
     case "system_prompt_self_edit":
