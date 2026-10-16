@@ -6,6 +6,7 @@ export const SYSTEM_PROMPT_SELF_EDIT_SERVER_NAME =
 export const WEB_SERVER_NAME = "web" as const;
 
 export const NON_DEFAULT_TOOLS = [
+  "mobbin" as const,
   COMPUTER_PROCESS_SERVER_NAME,
   WEB_SERVER_NAME,
   SYSTEM_PROMPT_SELF_EDIT_SERVER_NAME,

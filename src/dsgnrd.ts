@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { loginMobbin, disconnectMobbin } from "./integrations/mobbin";
 import type { BasicAuthConfig } from "./server";
 import { Command } from "commander";
 import { problemPathFromInput } from "./lib/problem";
@@ -70,6 +71,15 @@ async function experimentAndAgents({
 
 const program = new Command();
 program.name("dsgnrd").description("Design collaboration experiments").version("0.0.1");
+
+const mobbinCmd = program.command("mobbin").description("Connect a Mobbin account for design references");
+mobbinCmd.command("login").description("Authorize Mobbin in your browser").action(async () => {
+  try { await loginMobbin(); } catch (e) { console.error(e instanceof Error ? e.message : "Mobbin login failed."); process.exitCode = 1; }
+});
+mobbinCmd.command("disconnect").description("Remove local Mobbin credentials").action(async () => {
+  await disconnectMobbin();
+  console.log("Local Mobbin credentials removed. Revoke the app in Mobbin to revoke remote access too.");
+});
 
 // Experiment commands
 const experimentCmd = program

@@ -1,3 +1,10 @@
+import { AgentResource } from '../../src/resources/agent';
+// This fixture exercises browser cleanup only; never access the real Mobbin account.
+const originalJSON = AgentResource.prototype.toJSON;
+AgentResource.prototype.toJSON = function() {
+ const data = originalJSON.call(this);
+ return {...data, profile: {...data.profile, tools: data.profile.tools.filter(t => t !== 'mobbin')}};
+};
 // Exercise actual command shutdown without network or paid calls.
 import { TokenUsageResource } from '../../src/resources/token_usage';
 import Firecrawl from 'firecrawl';
