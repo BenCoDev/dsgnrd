@@ -1,0 +1,29 @@
+{
+  "experiment": "figma-collaboration-proof",
+  "database": "/tmp/dsgnrd-figma-collaboration-20261016-v3.sqlite",
+  "author": "https://www.figma.com/design/VEo8vKvbwyh7YiEnXbGkAj?node-id=5-6",
+  "peer": "https://www.figma.com/design/VEo8vKvbwyh7YiEnXbGkAj?node-id=5-14",
+  "finalRevision": 2,
+  "publications": [
+    {
+      "reference": "m6hq",
+      "status": "PUBLISHED"
+    },
+    {
+      "reference": "y7cc",
+      "status": "PUBLISHED"
+    }
+  ],
+  "reviews": [
+    {
+      "grade": "ACCEPT",
+      "content": "Inspected revision 1 at https://www.figma.com/design/VEo8vKvbwyh7YiEnXbGkAj?node-id=5-6. Increase emphasis on the Try this trick action so it is clearer below the video."
+    },
+    {
+      "grade": "ACCEPT",
+      "content": "Inspected revision 2. The primary action has stronger visual emphasis."
+    }
+  ],
+  "paidModelCalls": 0,
+  "fixture": "Deterministic responses through the real runner; not a model-quality evaluation."
+}

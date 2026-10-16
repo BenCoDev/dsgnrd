@@ -637,6 +637,24 @@ export const baseTemplate = (
       color: #333;
       font-weight: bold;
     }
+    .figma-previews { display: flex; flex-wrap: wrap; gap: 20px; margin: 18px 0; }
+    .figma-preview { margin: 0; width: 240px; max-width: 100%; }
+    .figma-preview img { display: block; width: 100%; height: 300px; object-fit: contain; background: #f4f4f4; border: 1px solid #ddd; border-radius: 8px; }
+    .figma-preview figcaption { margin-top: 8px; overflow-wrap: anywhere; }
+    .figma-preview small { display: block; color: #666; font-size: 11px; }
+    .proposal-card { display: flex; gap: 24px; align-items: flex-start; }
+    .proposal-image { flex: 0 0 220px; }
+    .proposal-image img { display: block; width: 220px; height: 280px; object-fit: contain; background: #f4f4f4; border-radius: 8px; }
+    .proposal-details { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    .proposal-details h3 { margin-top: 12px; }
+    .proposal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-top: 20px; }
+    .proposal-actions .btn { background: #f1f5f9; font-weight: bold; }
+    .proposal-actions > a:not(.btn) { font-size: 12px; color: #666; }
+    @media (max-width: 640px) {
+      .proposal-card { flex-direction: column; }
+      .proposal-image { flex-basis: auto; width: 100%; }
+      .proposal-image img { width: 100%; }
+    }
   </style>
   <!-- KaTeX CSS -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">

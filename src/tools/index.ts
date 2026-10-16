@@ -1,4 +1,5 @@
 import { createMobbinServer } from "./mobbin";
+import { createFigmaServer } from "./figma";
 import { createWebServer } from "./web";
 import { createGoalSolutionServer } from "./goal_solution";
 import { createPublicationsServer } from "./publications";
@@ -22,6 +23,8 @@ export async function createServer(
   },
 ): Promise<McpServer> {
   switch (tool) {
+    case "figma":
+      return createFigmaServer(experiment.toJSON().id, agent.toJSON().id);
     case "mobbin":
       return createMobbinServer();
     case "web":

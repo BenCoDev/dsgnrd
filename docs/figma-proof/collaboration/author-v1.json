@@ -1,0 +1,48 @@
+{
+  "frameId": "5:6",
+  "title": "Oldskaters / trick reveal",
+  "owner": 1,
+  "revision": 1,
+  "phase": "complete",
+  "fileKey": "VEo8vKvbwyh7YiEnXbGkAj",
+  "pageId": "0:1",
+  "operation": "1bd7099d-92a7-482a-bb0f-9d7d4b3f0980",
+  "layers": [
+    {
+      "id": "5:7",
+      "name": "Brand",
+      "type": "TEXT",
+      "text": "OLDSKATERS"
+    },
+    {
+      "id": "5:8",
+      "name": "Title",
+      "type": "TEXT",
+      "text": "Your next trick\nstarts here."
+    },
+    {
+      "id": "5:9",
+      "name": "Video placeholder",
+      "type": "RECTANGLE"
+    },
+    {
+      "id": "5:10",
+      "name": "Video label",
+      "type": "TEXT",
+      "text": "Watch the trick reveal"
+    },
+    {
+      "id": "5:11",
+      "name": "CTA background",
+      "type": "RECTANGLE"
+    },
+    {
+      "id": "5:12",
+      "name": "CTA label",
+      "type": "TEXT",
+      "text": "Try this trick"
+    }
+  ],
+  "url": "https://www.figma.com/design/VEo8vKvbwyh7YiEnXbGkAj?node-id=5-6",
+  "inspectedAt": "2026-10-16T08:46:11.561Z"
+}

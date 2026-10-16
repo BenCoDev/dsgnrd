@@ -75,7 +75,7 @@ export class Runner {
     config: RunConfig,
   ): Promise<Result<Runner>> {
     const unsupportedTools = agent.toJSON().profile.tools.filter(
-      (tool) => tool !== "system_prompt_self_edit" && tool !== "web" && tool !== "mobbin",
+      (tool) => tool !== "system_prompt_self_edit" && tool !== "web" && tool !== "mobbin" && tool !== "figma",
     );
     if (unsupportedTools.length > 0) {
       return err("invalid_parameters_error", `Optional tools are not implemented: ${unsupportedTools.join(", ")}.`);
@@ -165,7 +165,7 @@ export class Runner {
             const result = await client.callTool({
               name: tool.name,
               arguments: t.input,
-            }, undefined, client.getServerVersion()?.name === "web"
+            }, undefined, ["web", "figma"].includes(client.getServerVersion()?.name || "")
               // Allow bounded browser requests plus queued operations and cleanup.
               ? { timeout: 180_000 }
               : undefined);

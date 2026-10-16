@@ -76,6 +76,24 @@ export const agents = sqliteTable(
   (t) => [unique().on(t.name, t.experiment)],
 );
 
+// Optional Figma integration state. Core srchd collaboration tables are unchanged.
+export const figma_destinations = sqliteTable("figma_destinations", {
+  experiment: integer("experiment").primaryKey().references(() => experiments.id),
+  scope: text("scope").notNull().unique(),
+  file_key: text("file_key").notNull(),
+  page_id: text("page_id").notNull(),
+});
+
+export const figma_operations = sqliteTable("figma_operations", {
+  id: text("id").primaryKey(),
+  experiment: integer("experiment").notNull().references(() => figma_destinations.experiment),
+  agent: integer("agent").notNull().references(() => agents.id),
+  operation_key: text("operation_key").notNull(),
+  request: text("request").notNull(),
+  status: text("status", { enum: ["pending", "complete"] }).notNull(),
+  result: text("result"),
+}, t => [unique().on(t.agent, t.operation_key)]);
+
 export const evolutions = sqliteTable(
   "evolutions",
   {

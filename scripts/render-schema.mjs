@@ -2,7 +2,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 const { tables } = JSON.parse(
   readFileSync(
-    new URL("../src/migrations/meta/0002_snapshot.json", import.meta.url),
+    new URL("../src/migrations/meta/0003_snapshot.json", import.meta.url),
   ),
 );
 let diagram =
