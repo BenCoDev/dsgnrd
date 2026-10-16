@@ -1,0 +1,150 @@
+{
+  "limitUSD": 10,
+  "chargedUpperUSD": 5.713778499999998,
+  "reservedUSD": 0,
+  "calls": 28,
+  "ledger": [
+    {
+      "agent": "shared-stage-finisher",
+      "upperUSD": 0.1132375,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finisher",
+      "upperUSD": 0.2110175,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finisher",
+      "upperUSD": 0.28029875,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finisher",
+      "upperUSD": 0.205705,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finisher",
+      "upperUSD": 0.22973625,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finish-reviewer",
+      "upperUSD": 0.043625,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finish-reviewer",
+      "upperUSD": 0.012872,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finish-reviewer",
+      "upperUSD": 0.0501975,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finish-reviewer",
+      "upperUSD": 0.104485,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finisher",
+      "upperUSD": 0.1804425,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finisher",
+      "upperUSD": 0.18223625,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finisher",
+      "upperUSD": 0.1694675,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finisher",
+      "upperUSD": 0.301655,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finisher",
+      "upperUSD": 0.356534,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finisher",
+      "upperUSD": 0.37341125,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finisher",
+      "upperUSD": 0.17934875,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finisher",
+      "upperUSD": 0.17528,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finisher",
+      "upperUSD": 0.2475175,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finish-reviewer",
+      "upperUSD": 0.1161925,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finish-reviewer",
+      "upperUSD": 0.077327,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finish-reviewer",
+      "upperUSD": 0.0461195,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finish-reviewer",
+      "upperUSD": 0.06216,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finisher",
+      "upperUSD": 0.19898625,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finisher",
+      "upperUSD": 0.09613,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finisher",
+      "upperUSD": 0.22743925,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finisher",
+      "upperUSD": 0.29778925,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finisher",
+      "upperUSD": 0.1697675,
+      "knownUsage": true
+    },
+    {
+      "agent": "shared-stage-finisher",
+      "upperUSD": 1.0048,
+      "knownUsage": false,
+      "reason": "Run stopped with one model request in flight after final review; full reservation counted conservatively."
+    }
+  ],
+  "stopReason": "Final review accepted revision 2. Harness mistakenly waited for a solution report and allowed extra rejected writes; operator stopped the process. No pending writes."
+}

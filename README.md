@@ -53,7 +53,7 @@ Use `--port 1338` for another port, or `DATABASE_PATH=/path/to/db.sqlite` to ins
 
 ## Optional: editable Figma proposals
 
-The `design-figma` profile adds five tools: create, revise, list, inspect, and reconcile a proposal write. It uses Figma Console MCP **1.40.9** and its Desktop Bridge. Keep the destination file open in Figma Desktop with the plugin running. This local connection does not use OAuth; official remote MCP access for new clients remains blocked by Figma's onboarding pause.
+The `design-figma` profile adds six tools: create, revise, list, inspect, reconcile a proposal write, and list supplied image assets. It uses Figma Console MCP **1.40.9** and its Desktop Bridge. Keep the destination file open in Figma Desktop with the plugin running. This local connection does not use OAuth; official remote MCP access for new clients remains blocked by Figma's onboarding pause.
 
 Install the optional server separately, then set its absolute entrypoint in your environment (or `.env`):
 
@@ -75,11 +75,19 @@ npx tsx --env-file=.env src/dsgnrd.ts agent run all -e oldskaters-reveal --revie
 
 The file key comes from `/design/FILE_KEY/` in the URL; use the intended page's node ID, converting `0-1` to `0:1` if needed. The destination is immutable once configured; use a new experiment for a different destination. Use a dedicated Figma experiment if every participant should have these tools; existing `design` agents are not automatically switched to this profile.
 
-Each proposal gets a separate section owned by its author. Agents can inspect peer frames, but only revise their own frames at the expected revision. The initial vocabulary is text, rectangles, rounded rectangles, and frame backgrounds; revisions preserve dimensions. Screenshots and frame links are returned through the existing conversation storage/UI and linked from publications. Earlier observations remain saved when live layers change.
+Each proposal gets a separate section owned by its author. Agents can inspect peer frames, but only revise their own frames at the expected revision. Scenes support text, rectangles, supplied PNG/JPEG images, nested frames, auto layout, native components/instances, and reusable paint styles; revisions preserve root dimensions and recreate managed descendants. Up to 120 declared layers (300 after instance expansion), four nesting levels, and 1600px root dimensions are supported. Screenshots and frame links are returned through the existing conversation storage/UI and linked from publications. Earlier observations remain saved when live layers change.
 
 The overview shows submitted design proposals with saved previews, author, and review status. Publications linking the same author-owned frames are grouped to show their latest submission; earlier publications remain accessible. Unpublished frames do not appear as proposal cards. Publication previews use the latest matching saved observation available at publication time, labeled with its revision; they are not live Figma screenshots or a guarantee that the publication text names that same revision.
 
 Every write records durable intent first. A timeout leaves the operation pending; `reconcile_operation` checks the destination without repeating the write. A completed operation replays its original saved evidence. If completion cannot be proven, new writes in that experiment stop for human inspection. Do not invent a new operation key to bypass this. Hard termination may leave a local file lock in `~/.config/dsgnrd/figma` (override `DSGNRD_FIGMA_DIR`); remove a stale lock only after confirming no dsgnrd Figma process is active. Partial mutations require manual investigation; there is no automatic rollback or forced retry.
+
+### Finishing a selected proposal
+
+`design-finisher` is an ordinary agent profile for polishing an explicitly assigned publication. Keep the same experiment and give it the source reference, expected Figma revision, review feedback, scope, and stopping condition in its saved instructions. It creates its own editable frames; the source stays intact. A separate reviewer inspects the screenshots and exact revisions, then the finisher makes one revision and receives final verification. There is no new finisher entity, migration, or orchestration system.
+
+Supply images with `DSGNRD_FIGMA_ASSETS=/absolute/path/to/assets`. `list_assets` exposes valid PNG/JPEG filenames from that directory; scenes reference `assetId`, never arbitrary paths or URLs. Each image is limited to 2MB and 1600px per dimension, and a scene to eight images / 8MB. Symlinks are rejected. Without supplied imagery, the profile must report the gap. Component instances currently inherit all content without overrides; auto layout uses fixed outer dimensions. Prototype interactions and video playback are not implemented.
+
+For a bounded test in an existing experiment, the publication server accepts optional `RunConfig.reviewerAgentIds` to restrict random assignment to active participants. Self and other-experiment agents remain excluded; omitting it preserves the existing behavior. This is a programmatic setting, not a new CLI parameter. The live test uses the existing Runner with a separate shared $10 allowance in its local harness; the ordinary `experiment run` command does **not** enforce dollar budgets. See [finishing test and limitations](docs/design-finisher-walkthrough.md).
 
 [Implementation walkthrough and live evidence](docs/figma-tool-walkthrough.md#agent-integration). The deterministic two-agent fixture uses **zero paid model calls**. Subsequent real-model experiments verified autonomous tool use and exposed design-quality and revision-consistency limitations, documented in the walkthrough.
 

@@ -1,6 +1,6 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
@@ -27,13 +27,20 @@ function canvasFixture() {
       appendChild(child: any) { if (child.parent) child.parent.children = child.parent.children.filter((x: any) => x !== child); child.parent = n; n.children.push(child); },
       resize(w: number, h: number) { n.width = w; n.height = h; }, resizeWithoutConstraints(w: number, h: number) { n.resize(w, h); },
       remove() { n.parent.children = n.parent.children.filter((x: any) => x !== n); nodes.delete(n.id); },
+      setFillStyleIdAsync: async (id: string) => { n.fillStyleId = id; },
+      createInstance() { const clone = (source: any): any => { const c = node(source.type === 'COMPONENT' ? 'INSTANCE' : source.type); c.name = source.name; c.resize(source.width, source.height); for (const ch of source.children) c.appendChild(clone(ch)); return c; }; return clone(n); },
       exportAsync: async () => Buffer.from(png, 'base64'),
     };
     nodes.set(n.id, n); return n;
   }
   const page = node('PAGE'); nodes.delete(page.id); page.id = '0:1'; nodes.set(page.id, page);
   const figma: any = { fileKey: 'TestFile', getNodeByIdAsync: async (id: string) => nodes.get(id), loadFontAsync: async () => {}, base64Encode: (b: Buffer) => b.toString('base64') };
-  for (const [method, type] of Object.entries({ createSection: 'SECTION', createFrame: 'FRAME', createText: 'TEXT', createRectangle: 'RECTANGLE' })) figma[method] = () => { const n = node(type); page.appendChild(n); return n; };
+  for (const [method, type] of Object.entries({ createSection: 'SECTION', createFrame: 'FRAME', createText: 'TEXT', createRectangle: 'RECTANGLE', createComponent: 'COMPONENT' })) figma[method] = () => { const n = node(type); page.appendChild(n); return n; };
+  figma.base64Decode = (data: string) => Buffer.from(data, 'base64');
+  figma.createImage = () => ({ hash: 'image-hash' });
+  const styles: any[] = [];
+  figma.getLocalPaintStylesAsync = async () => styles;
+  figma.createPaintStyle = () => { const s = { id: `style-${styles.length}` }; styles.push(s); return s; };
   let failAfterWrite = false, disconnected = false, executions = 0;
   const remote: FigmaRemote = { execute: async (fileKey, code) => {
     executions++;
@@ -67,7 +74,7 @@ test('profile discovery, scoped creation, peer reads, revision conflicts, and un
   const f = await fixture();
   try {
     assert.equal(isNonDefaultToolName('figma'), true);
-    assert.equal((await f.clients[0].listTools()).tools.length, 5);
+    assert.equal((await f.clients[0].listTools()).tools.length, 6);
     const unrelated = f.canvas.node('RECTANGLE'); unrelated.name = 'Human work'; unrelated.y = 1000; f.canvas.page.appendChild(unrelated);
     const created = evidence(await f.call(0, 'create_proposal', { operationKey: 'one', scene }));
     const peer = evidence(await f.call(1, 'create_proposal', { operationKey: 'one', scene }));
@@ -153,6 +160,46 @@ test('concurrent calls with the same operation identity create exactly one propo
     assert.equal(f.canvas.page.children.length, 1);
     assert.equal((await f.call(0, 'create_proposal', { operationKey: 'same', scene: { ...scene, title: 'different' } })).isError, true);
   } finally { await f.close(); }
+});
+
+test('nested layouts, native components, supplied imagery and recursive ownership survive revision', async () => {
+  const f = await fixture();
+  process.env.DSGNRD_FIGMA_ASSETS = directory;
+  writeFileSync(join(directory, 'skater.png'), Buffer.from(png, 'base64'));
+  try {
+    const base = { name: 'Layer', x: 0, y: 0, width: 100, height: 40, color: '#111111' };
+    const rich = { ...scene, paintStyles: [{ key: 'ink', color: '#111111' }], elements: [
+      { ...base, type: 'component', componentKey: 'label', layout: 'VERTICAL', children: [{ ...base, type: 'text', text: 'Skate', paintStyle: 'ink', fillWidth: true }] },
+      { ...base, type: 'instance', componentKey: 'label', x: 120 },
+      { ...base, type: 'frame', layout: 'NONE', y: 60, children: [{ ...base, type: 'image', assetId: 'skater.png' }] },
+    ] };
+    const created = evidence(await f.call(0, 'create_proposal', { operationKey: 'rich', scene: rich }));
+    assert.equal(created.width, 400); assert.equal(created.height, 200);
+    assert.equal(created.layers[0].type, 'COMPONENT');
+    assert.equal(created.layers[1].type, 'INSTANCE');
+    assert.equal(created.layers[0].componentKey, 'label');
+    assert.equal(created.layers[1].componentKey, 'label');
+    assert.equal(created.layers[2].children[0].type, 'RECTANGLE');
+    assert.equal(created.layers[2].children[0].imageFit, 'FIT');
+    assert.equal(created.layers[2].children[0].assetId, 'skater.png');
+    const frame = f.canvas.nodes.get(created.frameId);
+    assert.equal(frame.children[0].children[0].layoutSizingHorizontal, 'FILL');
+    assert.equal(frame.children[2].children[0].fills[0].imageHash, 'image-hash');
+    assert.equal(evidence(await f.call(0, 'revise_proposal', { operationKey: 'rich-revise', frameId: created.frameId, revision: 1, scene: rich })).revision, 2);
+    frame.children[2].appendChild(f.canvas.node('TEXT'));
+    assert.equal((await f.call(0, 'revise_proposal', { operationKey: 'nested-human', frameId: created.frameId, revision: 2, scene: rich })).isError, true);
+    assert.equal(f.store.pending(f.experiment.id).length, 0);
+    const missing = { ...scene, elements: [{ ...base, type: 'image', assetId: 'missing.png' }] };
+    assert.equal((await f.call(0, 'create_proposal', { operationKey: 'missing', scene: missing })).isError, true);
+    assert.equal(f.store.pending(f.experiment.id).length, 0);
+    const invalid = { ...scene, elements: [{ ...base, type: 'instance', componentKey: 'absent' }] };
+    assert.equal((await f.call(0, 'create_proposal', { operationKey: 'invalid', scene: invalid })).isError, true);
+    const { readFigmaAsset, listFigmaAssets } = await import('../src/integrations/figma_assets');
+    assert.deepEqual(listFigmaAssets().find(a => a.assetId === 'skater.png'), { assetId:'skater.png', bytes:Buffer.from(png,'base64').length, width:1, height:1 });
+    assert.throws(() => readFigmaAsset('../skater.png'), /Invalid/);
+    symlinkSync(join(directory, 'skater.png'), join(directory, 'link.png'));
+    assert.throws(() => readFigmaAsset('link.png'));
+  } finally { delete process.env.DSGNRD_FIGMA_ASSETS; await f.close(); }
 });
 
 after(async () => { const [, , { db }] = await setup; db.$client.close(); rmSync(directory, { recursive: true, force: true }); });

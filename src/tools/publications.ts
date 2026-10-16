@@ -229,7 +229,8 @@ ${r.content}`;
       }
 
       const agents = await AgentResource.listByExperiment(experiment);
-      const pool = agents.filter((a) => a.toJSON().id !== agent.toJSON().id);
+      const pool = agents.filter((a) => a.toJSON().id !== agent.toJSON().id &&
+        (config.reviewerAgentIds === undefined || config.reviewerAgentIds.includes(a.toJSON().id)));
       if (pool.length < config.reviewers) {
         return errorToCallToolResult(
           err("publication_error", "Not enough reviewers available"),

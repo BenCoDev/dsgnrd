@@ -1,0 +1,5 @@
+{
+  "description": "Polish a selected proposal in Figma and revise it from a designated peer review.",
+  "tools": ["figma"],
+  "env": []
+}

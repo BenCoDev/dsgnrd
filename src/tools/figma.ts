@@ -4,6 +4,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { createFigmaRemote, withFigmaLock, type FigmaRemote } from '../integrations/figma';
 import { figmaStore, type FigmaStore } from '../resources/figma';
 import { canvasCode, sceneSchema, type CanvasRequest, type Scene } from './figma_canvas';
+import { listFigmaAssets, sceneAssets } from '../integrations/figma_assets';
 import { isScreenshot } from '../lib/images';
 
 const key = z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/);
@@ -34,6 +35,7 @@ export function createFigmaServer(experiment: number, agent: number, options: {
             if (action === 'reconcile' && !prior) throw new Error('Unknown operation key.');
             if (prior && action !== 'reconcile') throw new Error(`Operation ${input.operationKey} has an uncertain outcome. Use reconcile_operation with the same key; do not create a new key to retry.`);
             if (!prior && store.pending(experiment).length) throw new Error('An unresolved write blocks this experiment. Its author must reconcile_operation before new writes.');
+            if (!prior && input.scene) request.assets = sceneAssets(input.scene);
             if (!prior) await remote.execute(destination.file_key, canvasCode(destination, agent, { ...request, prepare: true }));
             // Durable intent precedes external effects. Never blindly retry pending intent.
             const operation = prior || store.begin(experiment, agent, input.operationKey!, serialized);
@@ -53,6 +55,10 @@ export function createFigmaServer(experiment: number, agent: number, options: {
     pending.add(work);
     try { return await work; } finally { pending.delete(work); }
   }
+  server.tool('list_assets', 'List supplied image asset IDs available for image nodes. Empty means no imagery supplied.', {}, async () => {
+    try { store.validateAgent(experiment, agent); return { content: [{ type: 'text', text: JSON.stringify({ assets: listFigmaAssets() }) }] }; }
+    catch (error) { return failure(error instanceof Error ? error.message : 'Unable to list assets.'); }
+  });
   server.tool('list_proposals', 'List proposal frame IDs, owners, and revisions in this experiment. Peer proposals are readable.', {}, () => run('list'));
   server.tool('inspect_proposal', 'Inspect a proposal, including a real PNG screenshot and editable layer IDs. Saved evidence describes this inspection time.', { frameId: nodeId }, input => run('inspect', input));
   server.tool('create_proposal', 'Create an editable proposal in your own separate area. Use a new stable operationKey per intended write. Inspect the returned screenshot before publishing its frame link. Never retry an uncertain write with a new key.', { operationKey: key, scene: sceneSchema }, input => run('create', input));
