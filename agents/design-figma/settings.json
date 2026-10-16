@@ -1,5 +1,8 @@
 {
   "description": "Create editable Figma proposals, inspect peers, and revise from reviews.",
-  "tools": ["figma"],
+  "tools": [
+    "figma",
+    "mobbin"
+  ],
   "env": []
 }

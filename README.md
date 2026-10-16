@@ -53,7 +53,7 @@ Use `--port 1338` for another port, or `DATABASE_PATH=/path/to/db.sqlite` to ins
 
 ## Optional: editable Figma proposals
 
-The `design-figma` profile adds six tools: create, revise, list, inspect, reconcile a proposal write, and list supplied image assets. It uses Figma Console MCP **1.40.9** and its Desktop Bridge. Keep the destination file open in Figma Desktop with the plugin running. This local connection does not use OAuth; official remote MCP access for new clients remains blocked by Figma's onboarding pause.
+The `design-figma` profile enables Mobbin research (authorize it using `mobbin login` first) and six Figma tools: create, revise, list, inspect, reconcile a proposal write, and list supplied image assets. It uses Figma Console MCP **1.40.9** and its Desktop Bridge. Keep the destination file open in Figma Desktop with the plugin running. This local connection does not use OAuth; official remote MCP access for new clients remains blocked by Figma's onboarding pause.
 
 Install the optional server separately, then set its absolute entrypoint in your environment (or `.env`):
 
@@ -80,6 +80,14 @@ Each proposal gets a separate section owned by its author. Agents can inspect pe
 The overview shows submitted design proposals with saved previews, author, and review status. Publications linking the same author-owned frames are grouped to show their latest submission; earlier publications remain accessible. Unpublished frames do not appear as proposal cards. Publication previews use the latest matching saved observation available at publication time, labeled with its revision; they are not live Figma screenshots or a guarantee that the publication text names that same revision.
 
 Every write records durable intent first. A timeout leaves the operation pending; `reconcile_operation` checks the destination without repeating the write. A completed operation replays its original saved evidence. If completion cannot be proven, new writes in that experiment stop for human inspection. Do not invent a new operation key to bypass this. Hard termination may leave a local file lock in `~/.config/dsgnrd/figma` (override `DSGNRD_FIGMA_DIR`); remove a stale lock only after confirming no dsgnrd Figma process is active. Partial mutations require manual investigation; there is no automatic rollback or forced retry.
+
+### Reading a proposal's research context
+
+The publication tools include `get_publication_context(reference, toolPrefix?, cursor?)`. It reads the author's recorded messages and tool evidence within the same experiment; PNG/JPEG screenshots are returned as actual images. Use `toolPrefix: "mobbin-"` for visual references, then omit the filter for the surrounding decisions. Follow `nextCursor` with the same reference/filter. Pages contain at most ten messages, 32KB of evidence text, and two validated images (2MB each); long text is split into resumable parts. Thinking blocks and provider metadata are excluded.
+
+New submission receipts record the author's last available message position. This fixes the context boundary without new tables or orchestration: a finisher cannot accidentally read later iterations as the source's rationale. Complete research before the submission turn; parallel tool results from that same tick are excluded because the runner has not saved them yet. Older publications use a clearly labeled, strict timestamp cutoff, which may omit same-second context. A publication without history returns an empty context page rather than inventing evidence.
+
+Explorer profiles explain references, adaptations, decisions, constraints, and open questions in their publication; finishers and reviewers retrieve the original visual evidence on demand. The standard Runner loads Mobbin from `design`/`design-figma` profile settings automatically. Custom experiment harnesses must also construct tools from profile settings rather than hard-code only Figma; historical test scripts did not include Mobbin and are not evidence of research usage.
 
 ### Finishing a selected proposal
 
