@@ -24,6 +24,7 @@ import {
 } from "./styling";
 import { BlankEnv, BlankInput } from "hono/types";
 import { Context } from "hono";
+import { figmaPreviews, renderFigmaPreviews, selectFigmaPreviews } from "./figma_previews";
 import {
   messageMetricsByExperiment,
   publicationMetricsByExperiment,
@@ -108,6 +109,34 @@ export const experimentOverview = async (c: Input) => {
         ? `$${cost.toFixed(4)}`
         : `$${cost.toFixed(2)}`;
 
+  const previews = figmaPreviews(id);
+  const seenProposals = new Set<string>();
+  const proposalCards = experimentPublications.map(pub => pub.toJSON())
+    .sort((a, b) => b.created.getTime() - a.created.getTime() || b.id - a.id)
+    .flatMap(pub => {
+      const images = selectFigmaPreviews(previews, { content: pub.content ?? "", created: pub.created })
+        .filter(preview => preview.owner === pub.author.id);
+      // Group revisions by author and linked owned frames. Text-only publications
+      // remain separate because the core model has no proposal/revision relation.
+      const key = images.length ? `${pub.author.id}:${images.map(p => p.key).sort().join(",")}` : `publication:${pub.id}`;
+      if (seenProposals.has(key)) return [];
+      seenProposals.add(key);
+      const href = `/experiments/${id}/publications/${pub.id}`;
+      const status = pub.status === "PUBLISHED" ? "Accepted by peers" : pub.status === "REJECTED" ? "Changes requested" : "Awaiting review";
+      const reviews = pub.reviews.filter(review => review.grade);
+      const preview = images[0];
+      return [`<article class="card proposal-card">
+        ${preview ? `<a class="proposal-image" href="${href}" aria-label="View proposal: ${sanitizeText(pub.title)}"><img src="data:image/png;base64,${preview.png}" alt="${sanitizeText(pub.title)}, saved revision ${preview.revision}" loading="lazy"></a>` : ""}
+        <div class="proposal-details">
+          <span class="status ${safeStatusClass(pub.status)}">${status}</span>
+          <h3><a href="${href}">${sanitizeText(pub.title)}</a></h3>
+          <p>${sanitizeText(pub.abstract)}</p>
+          <div class="meta">By ${sanitizeText(pub.author.name)} · ${reviews.length} completed ${reviews.length === 1 ? "review" : "reviews"}${preview ? ` · Saved revision ${preview.revision}` : ""}</div>
+          <div class="proposal-actions"><a class="btn" href="${href}">View proposal →</a>${preview ? `<a href="${sanitizeText(preview.url)}" target="_blank" rel="noopener noreferrer">Open in Figma ↗</a>` : ""}</div>
+        </div>
+      </article>`];
+    }).join("");
+
   const content = `
     ${experimentNav(id, "overview")}
     <div class="card">
@@ -125,6 +154,11 @@ export const experimentOverview = async (c: Input) => {
     <div class="card">
       <div class="markdown-content">${sanitizeMarkdown(problemMarkdown)}</div>
     </div>
+    <section aria-label="Design proposals"><h2>Design proposals</h2>
+      <p class="subtitle">Latest submissions for each design. Acceptance reflects peer review, not validation with users.</p>
+      ${proposalCards || "<p>No proposals submitted yet.</p>"}
+      ${proposalCards ? `<a href="/experiments/${id}/publications">View all publications and earlier versions →</a>` : ""}
+    </section>
     ${renderRuntimeMetrics(runtimeMetrics)}
     ${renderMessageMetrics(messageMetrics)}
     ${renderTokenUsageMetrics(tokenMetrics, formattedCost)}
@@ -425,6 +459,7 @@ export const publicationList = async (c: Input) => {
     await PublicationResource.listByExperiment(experiment);
   const expData = experiment.toJSON();
   const experimentName = sanitizeText(expData.name);
+  const previews = figmaPreviews(id);
 
   // Filter publications based on status
   const filteredPublications = experimentPublications.filter((pub) => {
@@ -457,6 +492,7 @@ export const publicationList = async (c: Input) => {
             pubData.title,
           )}</a></h3>
           <div class="abstract">${sanitizeText(pubData.abstract)}</div>
+          ${renderFigmaPreviews(previews, { content: pubData.content ?? "", created: pubData.created })}
           <div class="meta">
             Reference: ${sanitizeText(pubData.reference)} |
             <span class="status ${statusClass}">${sanitizeText(
@@ -534,6 +570,7 @@ export const publicationDetail = async (c: Input) => {
     <div class="card">
       <h3>Content</h3>
       ${renderedContent}
+      ${renderFigmaPreviews(figmaPreviews(id), { content: contentRaw, created: pubData.created })}
     </div>
     ${
       pubData.citations.from.length > 0

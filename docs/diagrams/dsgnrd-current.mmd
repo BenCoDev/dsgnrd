@@ -41,6 +41,24 @@ erDiagram
         text name
         text problem
     }
+    figma_destinations {
+        integer experiment PK
+        text scope
+        text file_key
+        text page_id
+    }
+    experiments ||--o{ figma_destinations : "experiment"
+    figma_operations {
+        text id PK
+        integer experiment FK
+        integer agent FK
+        text operation_key
+        text request
+        text status
+        text result "nullable"
+    }
+    figma_destinations ||--o{ figma_operations : "experiment"
+    agents ||--o{ figma_operations : "agent"
     messages {
         integer id PK
         integer created "timestamp"

@@ -4,13 +4,21 @@ These slices come from [dust-tt/srchd](https://github.com/dust-tt/srchd/tree/4b5
 
 The flows remain Commander CLI → resources → Drizzle → SQLite, with the upstream runner → model → in-memory MCP tools execution flow added for agent runs.
 
+## Figma proposals (dsgnrd addition)
+
+The optional `figma` server uses the same factory, in-memory MCP pairing, runner dispatch, and conversation storage as other tools. The only runner changes admit the tool name and allow a bounded 180-second request timeout. Publications, review assignment, citations, and solutions retain their existing behavior.
+
+The adapter sends fixed Plugin API scripts with validated JSON inputs through Figma Console MCP 1.40.9 and a running Desktop Bridge. Agents cannot execute arbitrary scripts or choose a destination. `figma_destinations` binds an experiment to an immutable file/page and unique scope; `figma_operations` saves operation intent and results to reconcile uncertain writes. These are additional integration state, not changes to srchd's nine core tables. The full implemented diagram includes them; the srchd reference remains pinned to the version above.
+
+A per-file cross-process lock serializes reads/writes from dsgnrd. A process shares one external MCP connection across its agent servers. The adapter checks exact file/page and canvas ownership markers on every operation. Revisions preserve dimensions, reject unrelated layers, and require the inspected revision. Inspection exports a PNG inside the explicitly file-targeted script, returning immutable evidence through existing messages. Unknown outcomes stay pending and block further experiment writes until reconciliation can prove completion; unresolved partial writes require human investigation. No paid model calls were used in the live integration fixture.
+
 - Unchanged: `src/lib/problem.ts`, `src/lib/utils.ts`, `src/db/index.ts`, `drizzle.config.ts`, and `.nvmrc`.
 - `LICENSE`: MIT terms and upstream copyright notice retained for srchd portions; BenCoDev copyright added for dsgnrd contributions.
 - `problems/oldskaters/trick-reveal/problem.md`: dsgnrd's own design problem, written with Ben.
 - `src/dsgnrd.ts`: upstream error printer, experiment create/list and agent profiles/create/list commands; run and saved-instruction update commands described below; remaining commands omitted; program name and description adapted. Computer profiles are rejected before saving because provisioning is deferred.
 - `src/lib/error.ts`: upstream error handling with `SrchdError` renamed to `DsgnrdError`; behavior unchanged.
 - `src/resources/experiment.ts`: upstream resource with agent-dependent deletion omitted until agents exist.
-- `src/db/schema.ts`: all nine upstream table definitions. The upstream `research` profile default is retained in the schema; the CLI always supplies the required profile explicitly. No fields or relationships redesigned.
+- `src/db/schema.ts`: all nine upstream table definitions, plus two dsgnrd-only Figma integration tables described below. The upstream `research` profile default is retained in the schema; the CLI always supplies the required profile explicitly. The core fields and relationships are unchanged.
 - `src/migrations/`: generated using Drizzle, with its own migration history. `0001_agents` adds the two tables without modifying existing experiments. Do not point dsgnrd at an srchd database.
 - Package dependencies and TypeScript options retain the relevant upstream choices. Anthropic and MCP dependencies are included for agent execution; computer dependencies are deferred; dashboard dependencies are included.
 

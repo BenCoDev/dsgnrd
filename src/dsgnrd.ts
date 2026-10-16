@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loginMobbin, disconnectMobbin } from "./integrations/mobbin";
+import { configureFigma } from "./resources/figma";
 import type { BasicAuthConfig } from "./server";
 import { Command } from "commander";
 import { problemPathFromInput } from "./lib/problem";
@@ -73,6 +74,19 @@ const program = new Command();
 program.name("dsgnrd").description("Design collaboration experiments").version("0.0.1");
 
 const mobbinCmd = program.command("mobbin").description("Connect a Mobbin account for design references");
+program.command("figma").description("Configure the local Figma Desktop Bridge integration")
+  .command("configure")
+  .requiredOption("-e, --experiment <experiment>", "Experiment name")
+  .requiredOption("--file-key <key>", "Figma Design file key from its URL")
+  .requiredOption("--page-id <id>", "Destination page ID, such as 0:1")
+  .action(async options => {
+    const result = await ExperimentResource.findByName(options.experiment);
+    if (result.isErr()) return exitWithError(result);
+    try {
+      console.table([configureFigma(result.value.toJSON().id, options.fileKey, options.pageId)]);
+      console.log("Destination saved. Keep this file and Figma Desktop Bridge open while running agents. Connection is checked on tool use.");
+    } catch (error) { console.error(error instanceof Error ? error.message : 'Figma configuration failed.'); process.exitCode = 1; }
+  });
 mobbinCmd.command("login").description("Authorize Mobbin in your browser").action(async () => {
   try { await loginMobbin(); } catch (e) { console.error(e instanceof Error ? e.message : "Mobbin login failed."); process.exitCode = 1; }
 });

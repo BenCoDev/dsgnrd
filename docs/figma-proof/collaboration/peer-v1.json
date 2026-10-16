@@ -1,0 +1,48 @@
+{
+  "frameId": "5:14",
+  "title": "Peer / alternate direction",
+  "owner": 2,
+  "revision": 1,
+  "phase": "complete",
+  "fileKey": "VEo8vKvbwyh7YiEnXbGkAj",
+  "pageId": "0:1",
+  "operation": "21fd7ddc-9442-4942-be73-6ee798c46d87",
+  "layers": [
+    {
+      "id": "5:15",
+      "name": "Brand",
+      "type": "TEXT",
+      "text": "OLDSKATERS"
+    },
+    {
+      "id": "5:16",
+      "name": "Title",
+      "type": "TEXT",
+      "text": "Your next trick\nstarts here."
+    },
+    {
+      "id": "5:17",
+      "name": "Video placeholder",
+      "type": "RECTANGLE"
+    },
+    {
+      "id": "5:18",
+      "name": "Video label",
+      "type": "TEXT",
+      "text": "Watch the trick reveal"
+    },
+    {
+      "id": "5:19",
+      "name": "CTA background",
+      "type": "RECTANGLE"
+    },
+    {
+      "id": "5:20",
+      "name": "CTA label",
+      "type": "TEXT",
+      "text": "Try this trick"
+    }
+  ],
+  "url": "https://www.figma.com/design/VEo8vKvbwyh7YiEnXbGkAj?node-id=5-14",
+  "inspectedAt": "2026-10-16T08:46:11.716Z"
+}
