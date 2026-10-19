@@ -1,6 +1,6 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
@@ -27,13 +27,20 @@ function canvasFixture() {
       appendChild(child: any) { if (child.parent) child.parent.children = child.parent.children.filter((x: any) => x !== child); child.parent = n; n.children.push(child); },
       resize(w: number, h: number) { n.width = w; n.height = h; }, resizeWithoutConstraints(w: number, h: number) { n.resize(w, h); },
       remove() { n.parent.children = n.parent.children.filter((x: any) => x !== n); nodes.delete(n.id); },
+      setFillStyleIdAsync: async (id: string) => { n.fillStyleId = id; },
+      createInstance() { const clone = (source: any): any => { const c = node(source.type === 'COMPONENT' ? 'INSTANCE' : source.type); c.name = source.name; c.resize(source.width, source.height); for (const ch of source.children) c.appendChild(clone(ch)); return c; }; return clone(n); },
       exportAsync: async () => Buffer.from(png, 'base64'),
     };
     nodes.set(n.id, n); return n;
   }
   const page = node('PAGE'); nodes.delete(page.id); page.id = '0:1'; nodes.set(page.id, page);
   const figma: any = { fileKey: 'TestFile', getNodeByIdAsync: async (id: string) => nodes.get(id), loadFontAsync: async () => {}, base64Encode: (b: Buffer) => b.toString('base64') };
-  for (const [method, type] of Object.entries({ createSection: 'SECTION', createFrame: 'FRAME', createText: 'TEXT', createRectangle: 'RECTANGLE' })) figma[method] = () => { const n = node(type); page.appendChild(n); return n; };
+  for (const [method, type] of Object.entries({ createSection: 'SECTION', createFrame: 'FRAME', createText: 'TEXT', createRectangle: 'RECTANGLE', createComponent: 'COMPONENT' })) figma[method] = () => { const n = node(type); page.appendChild(n); return n; };
+  figma.base64Decode = (data: string) => Buffer.from(data, 'base64');
+  figma.createImage = () => ({ hash: 'image-hash' });
+  const styles: any[] = [];
+  figma.getLocalPaintStylesAsync = async () => styles;
+  figma.createPaintStyle = () => { const s = { id: `style-${styles.length}` }; styles.push(s); return s; };
   let failAfterWrite = false, disconnected = false, executions = 0;
   const remote: FigmaRemote = { execute: async (fileKey, code) => {
     executions++;
@@ -67,7 +74,7 @@ test('profile discovery, scoped creation, peer reads, revision conflicts, and un
   const f = await fixture();
   try {
     assert.equal(isNonDefaultToolName('figma'), true);
-    assert.equal((await f.clients[0].listTools()).tools.length, 5);
+    assert.equal((await f.clients[0].listTools()).tools.length, 7);
     const unrelated = f.canvas.node('RECTANGLE'); unrelated.name = 'Human work'; unrelated.y = 1000; f.canvas.page.appendChild(unrelated);
     const created = evidence(await f.call(0, 'create_proposal', { operationKey: 'one', scene }));
     const peer = evidence(await f.call(1, 'create_proposal', { operationKey: 'one', scene }));
@@ -155,4 +162,86 @@ test('concurrent calls with the same operation identity create exactly one propo
   } finally { await f.close(); }
 });
 
+test('nested layouts, native components, supplied imagery and recursive ownership survive revision', async () => {
+  const f = await fixture();
+  process.env.DSGNRD_FIGMA_ASSETS = directory;
+  writeFileSync(join(directory, 'skater.png'), Buffer.from(png, 'base64'));
+  try {
+    const base = { name: 'Layer', x: 0, y: 0, width: 100, height: 40, color: '#111111' };
+    const rich = { ...scene, paintStyles: [{ key: 'ink', color: '#111111' }], elements: [
+      { ...base, type: 'component', componentKey: 'label', layout: 'VERTICAL', children: [{ ...base, type: 'text', text: 'Skate', paintStyle: 'ink', fillWidth: true }] },
+      { ...base, type: 'instance', componentKey: 'label', x: 120 },
+      { ...base, type: 'frame', layout: 'NONE', y: 60, children: [{ ...base, type: 'image', assetId: 'skater.png' }] },
+    ] };
+    const created = evidence(await f.call(0, 'create_proposal', { operationKey: 'rich', scene: rich }));
+    assert.equal(created.width, 400); assert.equal(created.height, 200);
+    assert.equal(created.layers[0].type, 'COMPONENT');
+    assert.equal(created.layers[1].type, 'INSTANCE');
+    assert.equal(created.layers[0].componentKey, 'label');
+    assert.equal(created.layers[1].componentKey, 'label');
+    assert.equal(created.layers[2].children[0].type, 'RECTANGLE');
+    assert.equal(created.layers[2].children[0].imageFit, 'FIT');
+    assert.equal(created.layers[2].children[0].assetId, 'skater.png');
+    const frame = f.canvas.nodes.get(created.frameId);
+    assert.equal(frame.children[0].children[0].layoutSizingHorizontal, 'FILL');
+    assert.equal(frame.children[2].children[0].fills[0].imageHash, 'image-hash');
+    assert.equal(evidence(await f.call(0, 'revise_proposal', { operationKey: 'rich-revise', frameId: created.frameId, revision: 1, scene: rich })).revision, 2);
+    frame.children[2].appendChild(f.canvas.node('TEXT'));
+    assert.equal((await f.call(0, 'revise_proposal', { operationKey: 'nested-human', frameId: created.frameId, revision: 2, scene: rich })).isError, true);
+    assert.equal(f.store.pending(f.experiment.id).length, 0);
+    const missing = { ...scene, elements: [{ ...base, type: 'image', assetId: 'missing.png' }] };
+    assert.equal((await f.call(0, 'create_proposal', { operationKey: 'missing', scene: missing })).isError, true);
+    assert.equal(f.store.pending(f.experiment.id).length, 0);
+    const invalid = { ...scene, elements: [{ ...base, type: 'instance', componentKey: 'absent' }] };
+    assert.equal((await f.call(0, 'create_proposal', { operationKey: 'invalid', scene: invalid })).isError, true);
+    const { readFigmaAsset, listFigmaAssets } = await import('../src/integrations/figma_assets');
+    assert.deepEqual(listFigmaAssets().find(a => a.assetId === 'skater.png'), { assetId:'skater.png', bytes:Buffer.from(png,'base64').length, width:1, height:1 });
+    assert.throws(() => readFigmaAsset('../skater.png'), /Invalid/);
+    symlinkSync(join(directory, 'skater.png'), join(directory, 'link.png'));
+    assert.throws(() => readFigmaAsset('link.png'));
+  } finally { delete process.env.DSGNRD_FIGMA_ASSETS; await f.close(); }
+});
+
 after(async () => { const [, , { db }] = await setup; db.$client.close(); rmSync(directory, { recursive: true, force: true }); });
+
+
+test('saved website media crosses publication handoff into an editable image, with boundaries and replay', async () => {
+  const f = await fixture();
+  const [{ db }, schema] = await Promise.all([import('../src/db'),import('../src/db/schema')]);
+  const old = process.env.DSGNRD_FIGMA_ASSETS;
+  process.env.DSGNRD_FIGMA_ASSETS = join(directory, 'research-assets');
+  try {
+    const content = [{type:'tool_result' as const,toolUseId:'capture-1',toolUseName:'web-capture_media',isError:false,content:[
+      {type:'text' as const,text:JSON.stringify({capture:'rendered_still',kind:'video',pageUrl:'https://example.com/skating',sourceUrl:'https://example.com/clip.mp4',currentTime:1.25})},
+      {type:'image' as const,mimeType:'image/png' as const,data:png},
+    ]}];
+    const message = db.insert(schema.messages).values({experiment:f.experiment.id,agent:f.agents[0].id,position:0,role:'user',content}).returning().get();
+    const publication = db.insert(schema.publications).values({experiment:f.experiment.id,author:f.agents[0].id,reference:'media-proof',title:'Shared stage',abstract:'Media',content:'Preserve shared horizon',status:'PUBLISHED'}).returning().get();
+    db.insert(schema.messages).values({experiment:f.experiment.id,agent:f.agents[0].id,position:1,role:'user',content:[{type:'tool_result',toolUseId:'submit',toolUseName:'publications-submit_publication',isError:false,content:[{type:'text',text:'Publication submitted. [media-proof]\nContext through position: 0'}]}]}).run();
+    const args={reference:publication.reference,messageId:message.id,toolUseId:'capture-1'};
+    const imported=await f.call(1,'import_research_asset',args);
+    assert.ok(!imported.isError,JSON.stringify(imported));
+    const asset=JSON.parse(imported.content[0].text);
+    assert.equal(asset.width,1); assert.equal(asset.height,1);
+    assert.equal(asset.provenance.sourceUrl,'https://example.com/clip.mp4');
+    assert.equal(asset.provenance.reference,'media-proof');
+    assert.equal(JSON.parse((await f.call(1,'import_research_asset',args)).content[0].text).assetId,asset.assetId);
+    assert.equal((await f.call(1,'import_research_asset',{messageId:message.id,toolUseId:'capture-1'})).isError,true); // Other author requires publication.
+    const later=db.insert(schema.messages).values({experiment:f.experiment.id,agent:f.agents[0].id,position:2,role:'user',content}).returning().get();
+    assert.equal((await f.call(1,'import_research_asset',{...args,messageId:later.id})).isError,true);
+    assert.equal((await f.call(1,'import_research_asset',{...args,reference:'missing'})).isError,true);
+    assert.equal((await f.call(1,'import_research_asset',{...args,toolUseId:'missing'})).isError,true);
+    const own=await f.call(0,'import_research_asset',{toolUseId:'capture-1'});
+    assert.ok(!own.isError,JSON.stringify(own));
+    assert.equal(JSON.parse(own.content[0].text).provenance.messageId,later.id);
+    assert.equal((await f.call(1,'import_research_asset',{reference:publication.reference,toolUseId:'capture-1'})).isError,true);
+    const images: Buffer[]=[];
+    f.canvas.figma.createImage=(bytes:Buffer)=>{images.push(bytes);return {hash:'research-image'};};
+    const made=evidence(await f.call(1,'create_proposal',{operationKey:'research-image',scene:{...scene,elements:[{type:'image',name:'Research still',x:0,y:0,width:100,height:100,color:'#FFFFFF',assetId:asset.assetId,imageFit:'FIT'}]}}));
+    assert.equal(made.revision,1);assert.ok(images.length>0);assert.equal(images[0].toString('base64'),png);
+    const foreign=await fixture();
+    try {assert.equal((await foreign.call(0,'import_research_asset',args)).isError,true);}finally{await foreign.close();}
+    const forbidden=db.insert(schema.messages).values({experiment:f.experiment.id,agent:f.agents[1].id,position:0,role:'user',content:[{...content[0],toolUseName:'mobbin-search_screens'}]}).returning().get();
+    assert.equal((await f.call(1,'import_research_asset',{messageId:forbidden.id,toolUseId:'capture-1'})).isError,true);
+  } finally {if(old===undefined)delete process.env.DSGNRD_FIGMA_ASSETS;else process.env.DSGNRD_FIGMA_ASSETS=old;await f.close();}
+});

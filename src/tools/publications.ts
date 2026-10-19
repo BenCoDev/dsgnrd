@@ -1,3 +1,4 @@
+import { registerPublicationContext, lastContextPosition, submissionReceipt } from './publication_context';
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { AgentResource } from "@app/resources/agent";
@@ -88,6 +89,8 @@ export async function createPublicationsServer(
     version: SERVER_VERSION,
   });
 
+
+  registerPublicationContext(server, experiment);
 
   server.tool(
     "list_publications",
@@ -229,7 +232,8 @@ ${r.content}`;
       }
 
       const agents = await AgentResource.listByExperiment(experiment);
-      const pool = agents.filter((a) => a.toJSON().id !== agent.toJSON().id);
+      const pool = agents.filter((a) => a.toJSON().id !== agent.toJSON().id &&
+        (config.reviewerAgentIds === undefined || config.reviewerAgentIds.includes(a.toJSON().id)));
       if (pool.length < config.reviewers) {
         return errorToCallToolResult(
           err("publication_error", "Not enough reviewers available"),
@@ -239,6 +243,7 @@ ${r.content}`;
         .sort(() => 0.5 - Math.random())
         .slice(0, config.reviewers);
 
+      const contextPosition = lastContextPosition(experiment.toJSON().id, agent.toJSON().id);
       const publication = await PublicationResource.submit(experiment, agent, {
         title,
         abstract,
@@ -266,7 +271,7 @@ ${r.content}`;
         content: [
           {
             type: "text",
-            text: "Publication submitted.",
+            text: submissionReceipt(res.reference, contextPosition),
           },
         ],
       };

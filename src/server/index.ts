@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { basicAuth } from "hono/basic-auth";
+import { prototypePreviewPage } from "./prototypes";
 import {
   agentOverview,
   experimentAgents,
@@ -45,6 +46,7 @@ export const createApp = (auth?: BasicAuthConfig) => {
   app.get("/experiments/:id/publications/:pubId", publicationDetail);
   app.get("/experiments/:id/publications/:pubId/download", publicationDownload);
   app.get("/experiments/:id/solutions", solutionList);
+  app.get("/experiments/:id/prototypes/:author/:revision", prototypePreviewPage);
 
   return app;
 };

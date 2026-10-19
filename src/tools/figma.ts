@@ -4,6 +4,8 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { createFigmaRemote, withFigmaLock, type FigmaRemote } from '../integrations/figma';
 import { figmaStore, type FigmaStore } from '../resources/figma';
 import { canvasCode, sceneSchema, type CanvasRequest, type Scene } from './figma_canvas';
+import { listFigmaAssets, sceneAssets } from '../integrations/figma_assets';
+import { importResearchAsset } from '../integrations/research_assets';
 import { isScreenshot } from '../lib/images';
 
 const key = z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/);
@@ -34,6 +36,7 @@ export function createFigmaServer(experiment: number, agent: number, options: {
             if (action === 'reconcile' && !prior) throw new Error('Unknown operation key.');
             if (prior && action !== 'reconcile') throw new Error(`Operation ${input.operationKey} has an uncertain outcome. Use reconcile_operation with the same key; do not create a new key to retry.`);
             if (!prior && store.pending(experiment).length) throw new Error('An unresolved write blocks this experiment. Its author must reconcile_operation before new writes.');
+            if (!prior && input.scene) request.assets = sceneAssets(input.scene, experiment);
             if (!prior) await remote.execute(destination.file_key, canvasCode(destination, agent, { ...request, prepare: true }));
             // Durable intent precedes external effects. Never blindly retry pending intent.
             const operation = prior || store.begin(experiment, agent, input.operationKey!, serialized);
@@ -53,6 +56,19 @@ export function createFigmaServer(experiment: number, agent: number, options: {
     pending.add(work);
     try { return await work; } finally { pending.delete(work); }
   }
+  server.tool('list_assets', 'List supplied and imported research images available for image nodes. Empty means no assets prepared yet; use web capture_media and import_research_asset for website imagery.', {}, async () => {
+    try { store.validateAgent(experiment, agent); return { content: [{ type: 'text', text: JSON.stringify({ assets: listFigmaAssets(experiment) }) }] }; }
+    catch (error) { return failure(error instanceof Error ? error.message : 'Unable to list assets.'); }
+  });
+  server.tool('import_research_asset', 'Prepare a saved web-capture_media PNG for Figma image nodes. Supply its messageId and toolUseId from recorded context. Use reference to import a source publication author’s pre-submission evidence; omit reference AND messageId for your own recorded captures and supply the exact toolUseId of your capture call. Never guess message IDs. Returns assetId, dimensions and provenance. No arbitrary URL fetch or reference-design copying.', {
+    reference: z.string().min(1).max(80).optional(), messageId: z.number().int().positive().optional(), toolUseId: z.string().min(1).max(200),
+  }, async input => {
+    try {
+      if (stopped) throw new Error('Figma tools are closed.');
+      store.validateAgent(experiment, agent);
+      return { content: [{ type:'text', text:JSON.stringify(importResearchAsset(experiment, agent, input)) }] };
+    } catch (error) { return failure(error instanceof Error ? error.message : 'Unable to import research asset.'); }
+  });
   server.tool('list_proposals', 'List proposal frame IDs, owners, and revisions in this experiment. Peer proposals are readable.', {}, () => run('list'));
   server.tool('inspect_proposal', 'Inspect a proposal, including a real PNG screenshot and editable layer IDs. Saved evidence describes this inspection time.', { frameId: nodeId }, input => run('inspect', input));
   server.tool('create_proposal', 'Create an editable proposal in your own separate area. Use a new stable operationKey per intended write. Inspect the returned screenshot before publishing its frame link. Never retry an uncertain write with a new key.', { operationKey: key, scene: sceneSchema }, input => run('create', input));

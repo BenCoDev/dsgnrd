@@ -1,0 +1,5 @@
+{
+  "description": "Polish an assigned proposition into an interactive HTML/CSS prototype; inspect browser screenshots and revise from peer review.",
+  "tools": ["prototype", "mobbin", "web"],
+  "env": []
+}

@@ -161,13 +161,14 @@ test("migration, cross-process ticks, peer review, citations, solution reports a
         "goal_solution-report",
         "publications-list_publications",
         "publications-get_publication",
+        "publications-get_publication_context",
         "publications-submit_publication",
         "publications-list_review_requests",
         "publications-list_submitted_publications",
         "publications-submit_review",
         "system_prompt_self_edit-append",
         "system_prompt_self_edit-edit",
-        "web-open", "web-act", "web-close",
+        "web-open", "web-act", "web-capture_media", "web-close",
         "mobbin-search_screens", "mobbin-search_flows", "mobbin-search_sections",
       ].sort(),
     );
@@ -508,6 +509,22 @@ test("migration, cross-process ticks, peer review, citations, solution reports a
     assert.ok(reference.content.some((c:any)=>c.type==="image"));
     const resumedMobbin=tick("author",[text("Inspecting the saved Mobbin reference.")],0);
     assert.ok(resumedMobbin.messages.some((m:any)=>m.content.some((c:any)=>c.type==="tool_result" && c.toolUseName==="mobbin-search_screens" && c.content.some((v:any)=>v.type==="image"))));
+    // A later process can retrieve the actual research images via the publication receipt.
+    tick("author", [submit("Proposal with research")], 0);
+    const researched = one("select * from publications where title=?", "Proposal with research");
+    tick("author", [text("POST_PUBLICATION_ONLY")], 0);
+    let cursor: any; let foundReference = false; let contextPages = 0;
+    do {
+      tick("reviewer", [tool("publications-get_publication_context", { reference: researched.reference, toolPrefix:"mobbin-", ...(cursor ? {cursor} : {}) })], 0);
+      const context = lastResult("reviewer"); assert.equal(context.isError, false);
+      const metadata = JSON.parse(context.content[0].text);
+      assert.equal(metadata.boundary, "submission_receipt");
+      assert.doesNotMatch(JSON.stringify(context), /POST_PUBLICATION_ONLY/);
+      foundReference ||= context.content.some((c:any)=>c.type==="image" && c.data===savedImage.data);
+      cursor = metadata.nextCursor;
+      assert.ok(++contextPages < 20);
+    } while(cursor);
+    assert.equal(foundReference, true);
   } finally {
     db.close();
     rmSync(dir, { recursive: true, force: true });
