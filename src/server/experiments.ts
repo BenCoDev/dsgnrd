@@ -25,6 +25,7 @@ import {
 import { BlankEnv, BlankInput } from "hono/types";
 import { Context } from "hono";
 import { figmaPreviews, renderFigmaPreviews, selectFigmaPreviews } from "./figma_previews";
+import { renderPrototypePreviews } from "./prototype_previews";
 import {
   messageMetricsByExperiment,
   publicationMetricsByExperiment,
@@ -493,6 +494,7 @@ export const publicationList = async (c: Input) => {
           )}</a></h3>
           <div class="abstract">${sanitizeText(pubData.abstract)}</div>
           ${renderFigmaPreviews(previews, { content: pubData.content ?? "", created: pubData.created })}
+          ${renderPrototypePreviews(id, { content: pubData.content ?? "", created: pubData.created })}
           <div class="meta">
             Reference: ${sanitizeText(pubData.reference)} |
             <span class="status ${statusClass}">${sanitizeText(
@@ -571,6 +573,7 @@ export const publicationDetail = async (c: Input) => {
       <h3>Content</h3>
       ${renderedContent}
       ${renderFigmaPreviews(figmaPreviews(id), { content: contentRaw, created: pubData.created })}
+      ${renderPrototypePreviews(id, { content: contentRaw, created: pubData.created })}
     </div>
     ${
       pubData.citations.from.length > 0

@@ -1,0 +1,5 @@
+{
+  "description": "Review exact saved web prototype revisions through browser screenshots and interactions; cannot write prototype source.",
+  "tools": ["prototype"],
+  "env": []
+}

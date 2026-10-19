@@ -1,6 +1,7 @@
 import { createMobbinServer } from "./mobbin";
 import { createFigmaServer } from "./figma";
 import { createWebServer } from "./web";
+import { createPrototypeServer } from "./prototype";
 import { createGoalSolutionServer } from "./goal_solution";
 import { createPublicationsServer } from "./publications";
 import { createSystemPromptSelfEditServer } from "./system_prompt_self_edit";
@@ -23,6 +24,10 @@ export async function createServer(
   },
 ): Promise<McpServer> {
   switch (tool) {
+    case "prototype":
+      return createPrototypeServer(experiment.toJSON().id, agent.toJSON().id, {
+        readOnly: agent.toJSON().profile.name === "design-web-reviewer",
+      });
     case "figma":
       return createFigmaServer(experiment.toJSON().id, agent.toJSON().id);
     case "mobbin":

@@ -1,14 +1,32 @@
-import { openSync, closeSync, fstatSync, readFileSync, readdirSync, constants } from 'node:fs';
+import { openSync, closeSync, fstatSync, readFileSync, readdirSync, constants, mkdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { resolve, join } from 'node:path';
 import { isReferenceImage, MAX_IMAGE_BYTES } from '../lib/images';
 import type { Scene, SceneElement } from '../tools/figma_canvas';
 
 const filename = /^[a-zA-Z0-9_-]+\.(png|jpe?g)$/i;
-// Only operator-supplied files in this directory are exposed. Never fetch agent URLs.
-export function readFigmaAsset(id: string): string {
+// Imported evidence uses the same bounded image path as operator-supplied assets.
+function assetDirectory(experiment?: number): string | undefined {
+  return process.env.DSGNRD_FIGMA_ASSETS || (experiment === undefined ? undefined : resolve('.local/figma-assets', String(experiment)));
+}
+export function saveResearchAsset(data: string, mimeType: string, experiment: number) {
+  if (!isReferenceImage(data, mimeType)) throw new Error('Invalid or oversized research image.');
+  const bytes = Buffer.from(data, 'base64');
+  const assetId = `research-${createHash('sha256').update(bytes).digest('hex')}.${mimeType === 'image/png' ? 'png' : 'jpg'}`;
+  const dir = assetDirectory(experiment)!;
+  mkdirSync(dir, { recursive: true });
+  try { writeFileSync(join(dir, assetId), bytes, { flag: 'wx' }); }
+  catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+    if (readFigmaAsset(assetId, experiment) !== data) throw new Error('Asset content mismatch.');
+  }
+  return { assetId, bytes: bytes.length, ...dimensions(data, mimeType === 'image/png') };
+}
+export function readFigmaAsset(id: string, experiment?: number): string {
   if (!filename.test(id)) throw new Error('Invalid asset ID.');
-  if (!process.env.DSGNRD_FIGMA_ASSETS) throw new Error('No Figma asset directory configured.');
-  const fd = openSync(join(resolve(process.env.DSGNRD_FIGMA_ASSETS), id), constants.O_RDONLY | constants.O_NOFOLLOW);
+  const dir = assetDirectory(experiment);
+  if (!dir) throw new Error('No Figma asset directory configured.');
+  const fd = openSync(join(resolve(dir), id), constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const stat = fstatSync(fd);
     if (!stat.isFile() || stat.size > MAX_IMAGE_BYTES) throw new Error('Asset exceeds the image limit.');
@@ -33,21 +51,24 @@ function dimensions(data: string, png: boolean): { width: number; height: number
   }
   throw new Error('Image dimensions missing.');
 }
-export function listFigmaAssets() {
-  if (!process.env.DSGNRD_FIGMA_ASSETS) return [];
-  return readdirSync(resolve(process.env.DSGNRD_FIGMA_ASSETS)).filter(id => filename.test(id)).sort().flatMap(id => {
-    try { const data = readFigmaAsset(id); return [{ assetId: id, bytes: Buffer.byteLength(data, 'base64'), ...dimensions(data, /\.png$/i.test(id)) }]; }
+export function listFigmaAssets(experiment?: number) {
+  const dir = assetDirectory(experiment);
+  if (!dir) return [];
+  let files: string[];
+  try { files = readdirSync(resolve(dir)); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return []; throw e; }
+  return files.filter(id => filename.test(id)).sort().flatMap(id => {
+    try { const data = readFigmaAsset(id, experiment); return [{ assetId: id, bytes: Buffer.byteLength(data, 'base64'), ...dimensions(data, /\.png$/i.test(id)) }]; }
     catch { return []; }
   });
 }
-export function sceneAssets(scene: Scene): Record<string, string> {
+export function sceneAssets(scene: Scene, experiment?: number): Record<string, string> {
   const ids = new Set<string>();
   const walk = (items: SceneElement[]) => { for (const e of items) { if (e.type === 'image' && e.assetId) ids.add(e.assetId); walk(e.children ?? []); } };
   walk(scene.elements);
   if (ids.size > 8) throw new Error('At most eight supplied images per scene.');
   const result: Record<string, string> = {}; let bytes = 0;
   for (const id of ids) {
-    const data = readFigmaAsset(id); bytes += Buffer.byteLength(data, 'base64');
+    const data = readFigmaAsset(id, experiment); bytes += Buffer.byteLength(data, 'base64');
     if (bytes > 8 * 1024 * 1024) throw new Error('Scene images exceed 8MB.');
     result[id] = data;
   }

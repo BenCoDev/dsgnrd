@@ -77,3 +77,47 @@ The image came from [the public Oldskaters kickflip clip](https://jjztguovyndwyp
 Validation: 22 automated tests passed, followed by passing focused tests for the final metadata/layout changes; TypeScript and whitespace checks pass. The actual Desktop Bridge check verified native components, auto layout, styles, supplied imagery, NONE layout, and revision, and the final read-only check verified root dimensions and image fit metadata.
 
 ![Accepted static board, revision 2](evidence/design-finisher/accepted-revision.png)
+
+
+## Art-direction refinement
+
+The finisher profile now includes Mobbin directly, so standard Runner launches have the same research access as the live harness. It starts with an explicit visual brief, adapts a small set of inspected references, and can compare two compositions for one screen before refining one selected direction. Product identity, honest imagery and clear actions take priority over additional states. With limited tools it chooses supported treatments rather than approximating gradients with visible bands.
+
+The reviewer assesses visual craft and source/reference fidelity, gives up to three prioritized improvements, and can reject the final revision. Both profiles require continued pagination before claiming evidence is absent; incomplete retrieval is reported as unverified. This addresses a live review that incorrectly accused genuine Mobbin references of fabrication after stopping before the final context pages.
+
+These are profile and tool-guidance changes within the existing Runner, publication and review flow. There is no new entity, data-model change or orchestration layer. Dollar limits remain enforced by the bounded experimental harness, not by prompt instructions.
+
+
+### Art-direction test outcome (2026-10-16)
+
+A fresh $10 shared cap funded finisher 11 (Opus 5) and reviewer 12 (Sonnet 5), based on publication `[3ldl]`. The bounded run finished after 21 paid requests and two completed reviews at **$2.07192215 accounted upper cost**, with no outstanding reservation. It produced two compositions, selected the warm-paper direction, and revised that screen. Both publications received ACCEPT; final `[lphm]` is publication 15.
+
+- [Final screen, frame 20:665 revision 4](https://www.figma.com/design/VEo8vKvbwyh7YiEnXbGkAj?node-id=20-665)
+- [Publication and peer review](http://localhost:1337/experiments/2/publications/15)
+- Ignored local evidence: `.local/figma-art-direction-10usd/` contains the harness, accounting, result, and independent final/source/study PNGs and inspection metadata.
+
+Independent bridge inspection confirmed final revision 4, exploratory study 20:686 revision 1, and unchanged source 17:449 revision 6. TypeScript, focused agent/context tests, and whitespace checks passed. No database schema or orchestration changes were made.
+
+The result removes repeated imagery and banded overlays, uses a contained landscape still and a warm paper/brick palette, and has a clearer hierarchy. It remains a conventional static composition, not proof of exceptional design. The reviewer completed reference pagination this time, but accepted the work with unresolved visual distinctiveness and some questionable geometry reasoning. The author incorrectly claimed that FIT inherently prevents edge alignment; matching the image box aspect ratio permits it. After this run, profile guidance was strengthened with the aspect-ratio formula and instructions to verify numeric/tool-limit claims and not reward disclosure alone with acceptance. Those final guidance refinements were not retested in another paid run.
+
+
+## Website media handoff
+
+The web tools now discover visible image/video URLs and capture selected rendered elements into bounded PNG tool results. A finisher imports those saved results through `figma-import_research_asset` using the source publication reference and the message/tool-use IDs exposed by context retrieval. The same publication boundary applies to context reads and asset imports. Fresh research can be imported from the finisher's own messages. Both Figma profiles now enable web research for gaps in older publications.
+
+Asset files use a content hash and the existing image validation/scene path. Repeated imports reuse the file; missing files can be reconstructed from saved evidence. The default asset location is scoped to the experiment unless the operator explicitly configures a shared asset directory. No data-model or orchestration changes are introduced. Research metadata and PNGs remain in existing messages; original video URLs remain evidence, while Figma receives static rendered stills only. Full-resolution downloads, CSS background discovery and playable prototypes are not implemented here.
+
+Verification covers source discovery and stale observations, provenance, cross-author handoff through a publication, pre-submission cutoffs, cross-experiment isolation, rejection of design-reference screenshots, idempotent import, and actual image bytes reaching the Figma Plugin API fixture.
+
+Validation for this handoff change: all 26 automated tests passed, TypeScript passed, and `git diff --check` passed. Browser capture code was executed against a controlled page fixture; the Figma path used the Plugin API fixture. No live website/Figma bridge verification or additional paid model experiment was performed for this change.
+
+Live follow-up exposed that models cannot reliably see numeric message IDs for their own fresh captures. Own-capture imports now resolve the exact tool-use ID within the current agent and experiment, without requiring a message ID. Historical publication imports still require both IDs and enforce the publication boundary. A regression test verifies own lookup and historical-ID requirements; all seven Figma tests and TypeScript pass after this fix.
+
+
+### Live media-handoff experiment
+
+The follow-up used source `[lphm]`, new agents 13/14, and an empty asset directory under `.local/figma-media-handoff-10usd/`. The finisher inspected Oldskaters, captured website footage and portrait thumbnails, and imported real 343×610/611 product images. Fresh inspection confirmed these render in final frame [25:747 revision 6](https://www.figma.com/design/VEo8vKvbwyh7YiEnXbGkAj?node-id=25-747), with source 20:665 unchanged at revision 4.
+
+Model usage was bounded at $8.9807054 across 60 calls, plus four reported Firecrawl credits (at most $0.02 at the published self-serve credit rates). Browser sessions were closed; resume disabled further browser tools and preserved the same $10 cap. No outstanding model reservation remains. The first publication `[ext3]` was rejected; the final revision was not submitted/reviewed before the budget guard stopped the run. It is an unreviewed draft, not a successful final acceptance.
+
+The visual result puts actual portrait skating imagery at the center instead of the previous editorial text stack. It is materially different, but motion remains unimplemented and some labels/controls are speculative. The live run exposed avoidable identifier guessing during own-capture imports and a transient black Figma export before a fresh screenshot rendered correctly. The identifier interface was corrected and tested during this run; existing successful imports were preserved on resume. Evidence, usage ledger and the final/source/study PNGs remain in the ignored experiment folder, with `audit.json` distinguishing input success from incomplete visual review.

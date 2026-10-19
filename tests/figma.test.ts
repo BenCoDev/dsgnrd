@@ -74,7 +74,7 @@ test('profile discovery, scoped creation, peer reads, revision conflicts, and un
   const f = await fixture();
   try {
     assert.equal(isNonDefaultToolName('figma'), true);
-    assert.equal((await f.clients[0].listTools()).tools.length, 6);
+    assert.equal((await f.clients[0].listTools()).tools.length, 7);
     const unrelated = f.canvas.node('RECTANGLE'); unrelated.name = 'Human work'; unrelated.y = 1000; f.canvas.page.appendChild(unrelated);
     const created = evidence(await f.call(0, 'create_proposal', { operationKey: 'one', scene }));
     const peer = evidence(await f.call(1, 'create_proposal', { operationKey: 'one', scene }));
@@ -203,3 +203,45 @@ test('nested layouts, native components, supplied imagery and recursive ownershi
 });
 
 after(async () => { const [, , { db }] = await setup; db.$client.close(); rmSync(directory, { recursive: true, force: true }); });
+
+
+test('saved website media crosses publication handoff into an editable image, with boundaries and replay', async () => {
+  const f = await fixture();
+  const [{ db }, schema] = await Promise.all([import('../src/db'),import('../src/db/schema')]);
+  const old = process.env.DSGNRD_FIGMA_ASSETS;
+  process.env.DSGNRD_FIGMA_ASSETS = join(directory, 'research-assets');
+  try {
+    const content = [{type:'tool_result' as const,toolUseId:'capture-1',toolUseName:'web-capture_media',isError:false,content:[
+      {type:'text' as const,text:JSON.stringify({capture:'rendered_still',kind:'video',pageUrl:'https://example.com/skating',sourceUrl:'https://example.com/clip.mp4',currentTime:1.25})},
+      {type:'image' as const,mimeType:'image/png' as const,data:png},
+    ]}];
+    const message = db.insert(schema.messages).values({experiment:f.experiment.id,agent:f.agents[0].id,position:0,role:'user',content}).returning().get();
+    const publication = db.insert(schema.publications).values({experiment:f.experiment.id,author:f.agents[0].id,reference:'media-proof',title:'Shared stage',abstract:'Media',content:'Preserve shared horizon',status:'PUBLISHED'}).returning().get();
+    db.insert(schema.messages).values({experiment:f.experiment.id,agent:f.agents[0].id,position:1,role:'user',content:[{type:'tool_result',toolUseId:'submit',toolUseName:'publications-submit_publication',isError:false,content:[{type:'text',text:'Publication submitted. [media-proof]\nContext through position: 0'}]}]}).run();
+    const args={reference:publication.reference,messageId:message.id,toolUseId:'capture-1'};
+    const imported=await f.call(1,'import_research_asset',args);
+    assert.ok(!imported.isError,JSON.stringify(imported));
+    const asset=JSON.parse(imported.content[0].text);
+    assert.equal(asset.width,1); assert.equal(asset.height,1);
+    assert.equal(asset.provenance.sourceUrl,'https://example.com/clip.mp4');
+    assert.equal(asset.provenance.reference,'media-proof');
+    assert.equal(JSON.parse((await f.call(1,'import_research_asset',args)).content[0].text).assetId,asset.assetId);
+    assert.equal((await f.call(1,'import_research_asset',{messageId:message.id,toolUseId:'capture-1'})).isError,true); // Other author requires publication.
+    const later=db.insert(schema.messages).values({experiment:f.experiment.id,agent:f.agents[0].id,position:2,role:'user',content}).returning().get();
+    assert.equal((await f.call(1,'import_research_asset',{...args,messageId:later.id})).isError,true);
+    assert.equal((await f.call(1,'import_research_asset',{...args,reference:'missing'})).isError,true);
+    assert.equal((await f.call(1,'import_research_asset',{...args,toolUseId:'missing'})).isError,true);
+    const own=await f.call(0,'import_research_asset',{toolUseId:'capture-1'});
+    assert.ok(!own.isError,JSON.stringify(own));
+    assert.equal(JSON.parse(own.content[0].text).provenance.messageId,later.id);
+    assert.equal((await f.call(1,'import_research_asset',{reference:publication.reference,toolUseId:'capture-1'})).isError,true);
+    const images: Buffer[]=[];
+    f.canvas.figma.createImage=(bytes:Buffer)=>{images.push(bytes);return {hash:'research-image'};};
+    const made=evidence(await f.call(1,'create_proposal',{operationKey:'research-image',scene:{...scene,elements:[{type:'image',name:'Research still',x:0,y:0,width:100,height:100,color:'#FFFFFF',assetId:asset.assetId,imageFit:'FIT'}]}}));
+    assert.equal(made.revision,1);assert.ok(images.length>0);assert.equal(images[0].toString('base64'),png);
+    const foreign=await fixture();
+    try {assert.equal((await foreign.call(0,'import_research_asset',args)).isError,true);}finally{await foreign.close();}
+    const forbidden=db.insert(schema.messages).values({experiment:f.experiment.id,agent:f.agents[1].id,position:0,role:'user',content:[{...content[0],toolUseName:'mobbin-search_screens'}]}).returning().get();
+    assert.equal((await f.call(1,'import_research_asset',{messageId:forbidden.id,toolUseId:'capture-1'})).isError,true);
+  } finally {if(old===undefined)delete process.env.DSGNRD_FIGMA_ASSETS;else process.env.DSGNRD_FIGMA_ASSETS=old;await f.close();}
+});

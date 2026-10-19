@@ -30,7 +30,7 @@ test('real MCP tools expose images, isolate sessions, reject stale actions and c
   const sa = createWebServer(a.api), sb = createWebServer(b.api);
   const [ca] = await createClientServerPair(sa), [cb] = await createClientServerPair(sb);
   try {
-    assert.deepEqual((await ca.listTools()).tools.map(t=>t.name), ['open','act','close']);
+    assert.deepEqual((await ca.listTools()).tools.map(t=>t.name), ['open','act','capture_media','close']);
     const first: any = await ca.callTool({name:'open',arguments:{url:'https://example.com',viewport:'mobile'}});
     assert.equal(first.isError, undefined);
     assert.equal(first.content[1].data, png);
@@ -119,4 +119,69 @@ test('real SDK transport makes one attempt, returns an image and deletes the ses
     await s.close();
     assert.equal(urls.length,3); assert.match(urls[1],/transport-session\/execute$/);
   } finally {await s.close();await c.close();axios.defaults.adapter=adapter;if(key===undefined)delete process.env.FIRECRAWL_API_KEY;else process.env.FIRECRAWL_API_KEY=key;}
+});
+
+
+test('media discovery and capture preserve source provenance and reject stale or undiscovered indices', async () => {
+  let calls=0;
+  const media={index:2,kind:'video',sourceUrl:'https://example.com/skate.mp4',posterUrl:'',alt:'',width:360,height:262,currentTime:1.5};
+  const api:BrowserClient={
+    async browser(){return {success:true,id:'media'};},
+    async browserExecute(_,args){calls++;return {success:true,exitCode:0,stdout:JSON.stringify(args.code.includes('const target=')?
+      {url:'https://example.com',...media,image:png}:
+      {url:'https://example.com',text:'Skating',image:png,media:[media]})};},
+    async deleteBrowser(){return {success:true};},
+  };
+  const server=createWebServer(api),[client]=await createClientServerPair(server);
+  try {
+    const opened:any=await client.callTool({name:'open',arguments:{url:'https://example.com'}});
+    const info=metadata(opened);assert.equal(info.media[0].sourceUrl,media.sourceUrl);
+    const args={session:info.session,observation:1,index:2};
+    assert.equal((await client.callTool({name:'capture_media',arguments:{...args,index:3}})).isError,true);
+    assert.equal(calls,1);
+    const captured:any=await client.callTool({name:'capture_media',arguments:args});
+    assert.ok(!captured.isError,JSON.stringify(captured));
+    assert.equal(metadata(captured).capture,'rendered_still');assert.equal(metadata(captured).currentTime,1.5);
+    assert.equal(metadata(captured).sourceUrl,media.sourceUrl);assert.equal(captured.content[1].data,png);
+    assert.equal((await client.callTool({name:'capture_media',arguments:args})).isError,true);
+    assert.equal((await client.callTool({name:'capture_media',arguments:{...args,observation:2}})).isError,true);
+    assert.equal(calls,2);
+    const refreshed:any=await client.callTool({name:'act',arguments:{session:info.session,observation:2,action:{type:'wait'}}});
+    assert.equal(metadata(refreshed).media[0].index,2);
+  }finally{await server.close();await client.close();}
+});
+
+test('generated browser scripts discover only visible media and capture the observed element', async () => {
+  const { runInNewContext } = await import('node:vm');
+  const { createHash } = await import('node:crypto');
+  const nodes = [
+    {tagName:'IMG',currentSrc:'https://example.com/hidden.png',naturalWidth:100,naturalHeight:100,getBoundingClientRect:()=>({width:100,height:100,top:900,bottom:1000,left:0,right:100})},
+    {tagName:'VIDEO',currentSrc:'https://example.com/skate.mp4',videoWidth:360,videoHeight:262,currentTime:2,getBoundingClientRect:()=>({width:360,height:262,top:10,bottom:272,left:0,right:360})},
+  ];
+  let selected=-1;
+  const page={
+    setViewportSize:async()=>{},goto:async()=>{},waitForTimeout:async()=>{},url:()=> 'https://example.com',
+    screenshot:async()=>Buffer.from(png,'base64'),
+    locator:(selector:string)=>selector==='body'?{innerText:async()=> 'Skating'}:{
+      evaluateAll:async(fn:any)=>fn(nodes),
+      nth:(index:number)=>({evaluate:async(fn:any)=>fn(nodes[index]),boundingBox:async()=>nodes[index].getBoundingClientRect(),screenshot:async()=>{selected=index;return Buffer.from(png,'base64');}}),
+    },
+  };
+  const api:BrowserClient={
+    async browser(){return {success:true,id:'executed'};},
+    async browserExecute(_,args){let stdout='';try{await runInNewContext(`(async()=>{${args.code}})()`,{page,innerHeight:800,innerWidth:1280,console:{log:(v:string)=>{stdout+=v;}}});return {success:true,exitCode:0,stdout};}catch{return {success:false,exitCode:1};}},
+    async deleteBrowser(){return {success:true};},
+  };
+  const server=createWebServer(api),[client]=await createClientServerPair(server);
+  try{
+    const opened:any=await client.callTool({name:'open',arguments:{url:'https://example.com'}});
+    assert.ok(!opened.isError,JSON.stringify(opened));
+    const m=metadata(opened);assert.equal(m.media.length,1);assert.equal(m.media[0].index,1);
+    const captured:any=await client.callTool({name:'capture_media',arguments:{session:m.session,observation:1,index:1}});
+    assert.ok(!captured.isError,JSON.stringify(captured));assert.equal(selected,1);assert.equal(metadata(captured).currentTime,2);
+    assert.equal(createHash('sha256').update(captured.content[1].data).digest('hex'),createHash('sha256').update(png).digest('hex'));
+    const fresh:any=await client.callTool({name:'act',arguments:{session:m.session,observation:2,action:{type:'wait'}}});
+    nodes[1].currentSrc='https://example.com/different.mp4';
+    assert.equal((await client.callTool({name:'capture_media',arguments:{session:m.session,observation:metadata(fresh).observation,index:1}})).isError,true);
+  }finally{await server.close();await client.close();}
 });

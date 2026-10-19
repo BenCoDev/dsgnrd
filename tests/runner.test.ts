@@ -168,7 +168,7 @@ test("migration, cross-process ticks, peer review, citations, solution reports a
         "publications-submit_review",
         "system_prompt_self_edit-append",
         "system_prompt_self_edit-edit",
-        "web-open", "web-act", "web-close",
+        "web-open", "web-act", "web-capture_media", "web-close",
         "mobbin-search_screens", "mobbin-search_flows", "mobbin-search_sections",
       ].sort(),
     );
